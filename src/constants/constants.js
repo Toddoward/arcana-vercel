@@ -345,24 +345,17 @@ export const ENHANCE = {
 export const WORLD = {
   COLS: 25,
   ROWS: 25,
-  CASTLE_X: 12,
-  CASTLE_Y: 12,
 
-  // 레드 드래곤 초기 스폰: 외곽 N타일 이내
-  DRAGON_SPAWN_EDGE_RANGE: 3,
+  // ※ 왕국 성 / 드래곤 네스트 위치는 WorldGenerator가 런타임에 결정
+  //   (섬 edge + 무게중심 기반 배치 — CASTLE_MARGIN / DRAGON_MARGIN 참조)
+  //   → 게임 시작 후 gameStore.castlePos / dragonSpawn 에서 참조
 
   // 레드 드래곤 이동 알고리즘 랜덤성
   DRAGON_SHORTEST_PATH_RATE: 0.70, // 최단경로 확률
   DRAGON_RANDOM_RATE:        0.30, // 이탈 확률
 
-  // 바이옴 비율 (합 = 1.0)
-  BIOME_RATIO: {
-    PLAINS:      0.35,
-    FOREST:      0.20,
-    SNOWMOUNT:   0.20,
-    VOLCANO:     0.15,
-    DRAGON_NEST: 0.10,
-  },
+  // ※ 바이옴 비율은 WorldGenerator.js DISTANCE_BIOME_TABLE 참조
+  //   (Voronoi + 거리 비율 기반 동적 결정 — 고정 퍼센트 없음)
 };
 
 // ─────────────────────────────────────────

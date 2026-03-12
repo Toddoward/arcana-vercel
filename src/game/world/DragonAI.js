@@ -5,13 +5,10 @@
 // - 이동: A* 70% / 랜덤 이탈 30%
 // - 마을 도착 시: 소각 처리 + 다음 목표 갱신
 // ============================================================
-import { TILE, WORLD } from '../../constants/constants.js';
+import { TILE } from '../../constants/constants.js';
 import { useGameStore }   from '../../stores/gameStore.js';
 import { usePlayerStore } from '../../stores/playerStore.js';
 import { useUIStore }     from '../../stores/uiStore.js';
-
-// 왕국 성 좌표 (상수에서 직접 참조)
-const CASTLE_POS = { x: WORLD.CASTLE_X, y: WORLD.CASTLE_Y };
 
 export class DragonAI {
   /**
@@ -35,13 +32,14 @@ export class DragonAI {
     const gameState   = useGameStore.getState();
     const dragonAlive = gameState.dragonAlive;
     const dragonPos   = gameState.dragonPos;
+    const castlePos   = gameState.castlePos;   // WorldGenerator가 결정한 런타임 성 위치
 
     if (!dragonAlive || !dragonPos) {
       return { moved: false, burnedVillage: null, gameOver: false };
     }
 
     // ── 목표 선정 ─────────────────────────────────────────
-    const target = this._selectTarget(dragonPos, gameState.burnedVillages);
+    const target = this._selectTarget(dragonPos, gameState.burnedVillages, castlePos);
 
     // ── 다음 칸 결정 (A* 70% / 랜덤 30%) ─────────────────
     const nextPos = this._decideNextStep(dragonPos, target);
@@ -91,16 +89,16 @@ export class DragonAI {
    * 1. 드래곤 → 성 방향 경로상에 소각되지 않은 마을이 있으면 → 가장 가까운 마을
    * 2. 없으면 → 왕국 성
    */
-  _selectTarget(dragonPos, burnedVillages) {
+  _selectTarget(dragonPos, burnedVillages, castlePos) {
     // 드래곤은 모든 타일 통과 가능 (ignoreBlocked: true)
     const pathToCastle = this._grid.findPath(
       dragonPos.x, dragonPos.y,
-      CASTLE_POS.x, CASTLE_POS.y,
+      castlePos.x, castlePos.y,
       true,
     );
 
     if (!pathToCastle || pathToCastle.length === 0) {
-      return CASTLE_POS;
+      return castlePos;
     }
 
     const burnedSet = new Set(
@@ -117,7 +115,7 @@ export class DragonAI {
       }
     }
 
-    return CASTLE_POS;
+    return castlePos;
   }
 
   // ── 다음 스텝 결정 ────────────────────────────────────────
