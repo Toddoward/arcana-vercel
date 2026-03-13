@@ -22,14 +22,14 @@ import { TILE, BIOME } from '../../constants/constants.js';
 // ================================================================
 
 // ── 맵 크기 ──────────────────────────────────────────────────────
-const WORLD_COLS          = 25;   // 가로 타일 수
-const WORLD_ROWS          = 25;   // 세로 타일 수
+const WORLD_COLS          = 60;   // 가로 타일 수
+const WORLD_ROWS          = 60;   // 세로 타일 수
 
 // ── 노이즈 파라미터 ───────────────────────────────────────────────
-const NOISE_OCTAVES       = 5;    // 옥타브 수 (높을수록 해안선이 복잡해짐)
-const NOISE_PERSISTENCE   = 0.5;  // 고주파 옥타브 감쇠율 (0~1)
+const NOISE_OCTAVES       = 6;    // 옥타브 수 (높을수록 해안선이 복잡해짐)
+const NOISE_PERSISTENCE   = 0.1;  // 고주파 옥타브 감쇠율 (0~1)
 const NOISE_LACUNARITY    = 2.0;  // 옥타브당 주파수 배율
-const NOISE_SCALE         = 0.15; // 전체 노이즈 스케일 (작을수록 섬이 커짐)
+const NOISE_SCALE         = 0.2; // 전체 노이즈 스케일 (작을수록 섬이 커짐)
 
 // ── 아일랜드 형태 ─────────────────────────────────────────────────
 const GRADIENT_STRENGTH   = 1.3;  // Square gradient 강도 (높을수록 섬이 작아짐)

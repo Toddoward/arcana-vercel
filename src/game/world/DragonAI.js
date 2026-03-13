@@ -8,7 +8,7 @@
 import { TILE } from '../../constants/constants.js';
 import { useGameStore }   from '../../stores/gameStore.js';
 import { usePlayerStore } from '../../stores/playerStore.js';
-import { useUIStore }     from '../../stores/uiStore.js';
+import { useUiStore }     from '../../stores/uiStore.js';
 
 export class DragonAI {
   /**
@@ -64,7 +64,7 @@ export class DragonAI {
         this._grid.updateTile(nextPos.x, nextPos.y, { type: TILE.VILLAGE_BURNED });
         this._evictPlayersFromTile(nextPos.x, nextPos.y);
         this._failDeliveryQuests(nextPos.x, nextPos.y);
-        useUIStore.getState().addToast(
+        useUiStore.getState().addToast(
           `🔥 드래곤이 마을을 불태웠습니다! (${nextPos.x}, ${nextPos.y})`,
           'error',
         );
@@ -74,7 +74,7 @@ export class DragonAI {
       if (arrivedTile.type === TILE.CASTLE) {
         gameOver = true;
         useGameStore.getState().triggerGameOver('DRAGON_REACHED_CASTLE');
-        useUIStore.getState().addToast(
+        useUiStore.getState().addToast(
           '🐉 드래곤이 왕국에 도달했습니다! 게임 오버.',
           'error',
         );
@@ -170,7 +170,7 @@ export class DragonAI {
       if (options.length > 0) {
         const dest = options[Math.floor(Math.random() * options.length)];
         playerState.movePlayer(player.id, dest.x, dest.y);
-        useUIStore.getState().addToast(
+        useUiStore.getState().addToast(
           `${player.name}이(가) 드래곤 공격으로 인근으로 이동했습니다.`,
           'warn',
         );
@@ -192,7 +192,7 @@ export class DragonAI {
           quest.targetY === burnedY
         ) {
           playerState.failQuest(player.id, quest.questId);
-          useUIStore.getState().addToast(
+          useUiStore.getState().addToast(
             `배달 퀘스트 실패: 목표 마을이 소각되었습니다.`,
             'error',
           );
@@ -204,7 +204,7 @@ export class DragonAI {
   // ── 드래곤 처치 처리 ──────────────────────────────────────
   onDragonDefeated() {
     useGameStore.getState().setDragonAlive(false);
-    useUIStore.getState().addToast(
+    useUiStore.getState().addToast(
       '🏆 레드 드래곤을 처치했습니다!',
       'info',
     );

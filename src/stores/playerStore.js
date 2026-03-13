@@ -404,6 +404,59 @@ export const usePlayerStore = create((set, get) => ({
     }),
   })),
 
+  // ── 아이템 추가 ───────────────────────────
+  addItem: (playerId, item) => set((state) => ({
+    players: state.players.map((p) =>
+      p.id !== playerId ? p : { ...p, inventory: [...(p.inventory ?? []), item] }
+    ),
+  })),
+
+  // ── DP 최대치 업그레이드 (GDD §21: 5→최대 8) ──
+  upgradeDp: (playerId) => set((state) => ({
+    players: state.players.map((p) =>
+      p.id !== playerId ? p : {
+        ...p,
+        maxDp:          Math.min((p.maxDp ?? 5) + 1, 8),
+        inventoryExpanded: (p.inventoryExpanded ?? 0),
+      }
+    ),
+  })),
+
+  // ── 인벤토리 확장 횟수 기록 ────────────────
+  // expandInventory는 기존에 있으므로 횟수 카운터만 별도 관리
+  incrementInvExpanded: (playerId) => set((state) => ({
+    players: state.players.map((p) =>
+      p.id !== playerId ? p : { ...p, inventoryExpanded: (p.inventoryExpanded ?? 0) + 1 }
+    ),
+  })),
+
+  // ── 장비 강화 (GDD §21 대장간) ────────────
+  upgradeEquipment: (playerId, slot, forgeTier) => set((state) => ({
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      const equip = p.equipment?.[slot];
+      if (!equip) return p;
+      return {
+        ...p,
+        equipment: {
+          ...p.equipment,
+          [slot]: { ...equip, forgeLevel: forgeTier },
+        },
+      };
+    }),
+  })),
+
+  // ── 전체 HP·DP 회복 (여관) ─────────────────
+  healFull: (playerId) => set((state) => ({
+    players: state.players.map((p) =>
+      p.id !== playerId ? p : {
+        ...p,
+        currentHp: p.maxHp,
+        dp:        p.maxDp ?? 5,
+      }
+    ),
+  })),
+
   // ── 골드 관리 ─────────────────────────────
   addGold: (playerId, amount) => set((state) => ({
     players: state.players.map((p) =>
@@ -483,6 +536,126 @@ export const usePlayerStore = create((set, get) => ({
     ),
   })),
 
+  // ── 전투 전용 메서드 ──────────────────────
+
+  // 전투 시작: 전 플레이어 덱 셔플 + 5장 드로우
+  initCombatDecks: () => set((state) => ({
+    players: state.players.map((p) => {
+      const shuffled = [...p.deck].sort(() => Math.random() - 0.5);
+      const hand     = shuffled.slice(0, 5);
+      const deck     = shuffled.slice(5);
+      return { ...p, deck, hand, discard: [], field: [] };
+    }),
+  })),
+
+  // 카드 N장 드로우 (덱 소진 시 묘지 셔플 후 재구성)
+  drawCards: (playerId, count = 1) => set((state) => ({
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      let deck    = [...p.deck];
+      let discard = [...p.discard];
+      let hand    = [...p.hand];
+
+      for (let i = 0; i < count; i++) {
+        if (deck.length === 0) {
+          // 묘지 셔플 → 덱 재구성
+          deck    = discard.sort(() => Math.random() - 0.5);
+          discard = [];
+        }
+        if (deck.length > 0) hand.push(deck.shift());
+      }
+      // 핸드 최대 12장
+      if (hand.length > 12) hand = hand.slice(0, 12);
+      return { ...p, deck, discard, hand };
+    }),
+  })),
+
+  // 덱 상위 N장 확인 (Sense 카드)
+  peekDeck: (playerId, count = 3) => {
+    const p = get().players.find((pl) => pl.id === playerId);
+    return p ? p.deck.slice(0, count) : [];
+  },
+
+  // HP 데미지 적용
+  takeDamage: (playerId, amount) => set((state) => ({
+    players: state.players.map((p) =>
+      p.id !== playerId ? p : { ...p, hp: Math.max(0, p.hp - amount) }
+    ),
+  })),
+
+  // 상태이상 적용 (중첩 시 지속 연장)
+  applyStatus: (playerId, statusType, duration) => set((state) => ({
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      const existing = p.statusEffects.find((s) => s.type === statusType);
+      if (existing) {
+        return {
+          ...p,
+          statusEffects: p.statusEffects.map((s) =>
+            s.type === statusType ? { ...s, duration: s.duration + duration } : s
+          ),
+        };
+      }
+      return { ...p, statusEffects: [...p.statusEffects, { type: statusType, duration }] };
+    }),
+  })),
+
+  // 임시 스탯 버프 적용 (1주기)
+  applyBuff: (playerId, statBuff, durationCycles = 1) => set((state) => ({
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      const updated = { ...p.statModifiers };
+      for (const [key, val] of Object.entries(statBuff)) {
+        updated[key.toUpperCase()] = (updated[key.toUpperCase()] ?? 0) + val;
+      }
+      return { ...p, statModifiers: updated };
+    }),
+  })),
+
+  // 패시브 카드 필드 등록
+  applyPassive: (playerId, passiveType, data = {}) => set((state) => ({
+    players: state.players.map((p) =>
+      p.id !== playerId ? p : {
+        ...p,
+        field: [...p.field, { type: passiveType, ...data, id: `${passiveType}_${Date.now()}` }],
+      }
+    ),
+  })),
+
+  // 패시브 만료: field에서 instanceId 항목 제거 → discard로 이동
+  // PassiveManager._expirePassive() 에서 호출
+  expirePassive: (playerId, instanceId) => set((state) => ({
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      const card = p.field.find((c) => c.instanceId === instanceId);
+      return {
+        ...p,
+        field:   p.field.filter((c) => c.instanceId !== instanceId),
+        discard: card ? [...p.discard, card] : p.discard,
+      };
+    }),
+  })),
+
+  // 상태이상 틱 (주기 종료 시 전 플레이어 적용)
+  tickStatusEffects: () => set((state) => ({
+    players: state.players.map((p) => {
+      let hp = p.hp;
+      // 지속 데미지 처리
+      for (const s of p.statusEffects) {
+        if (s.type === 'BURN' || s.type === 'POISON') {
+          hp = Math.max(0, hp - Math.round(p.maxHp * 0.05));
+        }
+      }
+      return {
+        ...p,
+        hp,
+        statusEffects: p.statusEffects
+          .map((s)  => ({ ...s, duration: s.duration - 1 }))
+          .filter((s) => s.duration > 0),
+      };
+    }),
+  })),
+
   // ── 로컬 스토리지 저장/불러오기 ───────────
   saveToLocal: () => {
     const { players, localPlayerId } = get();
@@ -495,9 +668,49 @@ export const usePlayerStore = create((set, get) => ({
     }
   },
 
+  // ── 덱 상태 일괄 갱신 (DeckBuilder 반환값 적용) ──────────────
+  // DeckBuilder.initForCombat / draw / resetAfterCombat 결과를 반영
+  setDeckState: (playerId, deckState) => set((state) => ({
+    players: state.players.map((p) =>
+      p.id !== playerId ? p : {
+        ...p,
+        deck:    deckState.deck    ?? p.deck,
+        hand:    deckState.hand    ?? p.hand,
+        discard: deckState.discard ?? p.discard,
+        field:   deckState.field   ?? p.field,
+        currentAP: deckState.currentAP ?? p.currentAP,
+      }
+    ),
+  })),
+
+  // ── 패시브 카드 hand → field 이동 ────────────────────────────
+  // DeckBuilder.registerPassive 호출 후 store 반영용
+  moveToField: (playerId, instanceId) => set((state) => ({
+    players: state.players.map((p) => {
+      if (p.id !== playerId) return p;
+      const card = p.hand?.find((c) => c.instanceId === instanceId);
+      if (!card) return p;
+      return {
+        ...p,
+        hand:  p.hand.filter((c) => c.instanceId !== instanceId),
+        field: [...(p.field ?? []), card],
+      };
+    }),
+  })),
+
   loadFromLocal: (playerId) => {
     const raw = localStorage.getItem(`arcana_player_${playerId}`);
     if (!raw) return null;
     try { return JSON.parse(raw); } catch { return null; }
+  },
+
+  // ── 동기화 스냅샷 (SyncManager 연동) ──────────────────────────
+  getSnapshot: () => {
+    return { players: get().players };
+  },
+
+  applySnapshot: (snap) => {
+    if (!snap?.players) return;
+    set({ players: snap.players });
   },
 }));

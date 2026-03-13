@@ -1,13 +1,39 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>arcana-vercel</title>
+    <title>ARCANA</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: #07070a;
+        overflow: hidden;
+        font-family: 'Cinzel', 'Georgia', serif;
+        color: #e8dfc8;
+      }
+      #canvas-root {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+      }
+      #ui-root {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none; /* 자식이 pointer-events: auto 를 선택적으로 활성화 */
+      }
+    </style>
+    <!-- 구글 폰트 (Cinzel) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
-    <div id="root"></div>
+    <canvas id="canvas-root"></canvas>
+    <div id="ui-root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import { SCENE } from '../constants/constants.js';
 
-export const useUIStore = create((set, get) => ({
+export const useUiStore = create((set, get) => ({
   // ── 씬 ────────────────────────────────────
   currentScene:  SCENE.MAIN_MENU,
   previousScene: null,
@@ -96,7 +96,7 @@ export const useUIStore = create((set, get) => ({
     const id = Date.now();
     // 자동 제거 타이머
     setTimeout(() => {
-      useUIStore.getState().removeToast(id);
+      useUiStore.getState().removeToast(id);
     }, duration);
     return {
       toasts: [...state.toasts, { id, message, type, duration }],
@@ -130,6 +130,77 @@ export const useUIStore = create((set, get) => ({
   clearSelectedTile: () => set({ selectedTile: null }),
 
   // ── 전체 UI 초기화 (씬 전환 시 사용) ──────
+  // ── 전투 턴 상태 ─────────────────────────────────────────────
+  // BattleScene에서 호출 — HandUI 활성화 여부 제어
+  isMyTurn:       false,
+  myTurnPlayerId: null,
+
+  setMyTurn: (isMyTurn, playerId) => set({ isMyTurn, myTurnPlayerId: playerId }),
+
+  // ── 대기 중인 타겟 (적 클릭 → HandUI 포인트&클릭 연결) ────────
+  pendingTargetId: null,
+  setPendingTarget: (id) => set({ pendingTargetId: id }),
+  clearPendingTarget: () => set({ pendingTargetId: null }),
+
+  // ── 전투 결과 / 게임오버 ──────────────────────────────────────
+  resultPayload: null,   // { result, rewards?, reason? }
+  showResult: (payload) => set({ resultPayload: payload }),
+  clearResult: () => set({ resultPayload: null }),
+
+  // ── 부활 스크롤 프롬프트 ──────────────────────────────────────
+  showingRevivePrompt: false,
+  showRevivePrompt: () => set({ showingRevivePrompt: true }),
+  hideRevivePrompt: () => set({ showingRevivePrompt: false }),
+
+  // ── 게임오버 ──────────────────────────────────────────────────
+  gameOverReason: null,
+  showGameOver: (reason) => set({ gameOverReason: reason }),
+  clearGameOver: () => set({ gameOverReason: null }),
+
+  // ── 월드맵 토스트 메시지 ──────────────────────────────────────
+  showToast: (message, type = 'info', duration = 3000) => {
+    const id = Date.now();
+    set((state) => ({ toasts: [...state.toasts, { id, message, type, duration }] }));
+    setTimeout(() => {
+      useUiStore.getState().removeToast(id);
+    }, duration);
+  },
+
+  // ── 타일 호버 정보 ────────────────────────────────────────────
+  hoveredTile: null,
+  setHoveredTile: (tile) => set({ hoveredTile: tile }),
+
+  // ── 마을 진입 ─────────────────────────────────────────────────
+  villagePayload: null,
+  openVillage: (payload) => set({ villagePayload: payload }),
+  closeVillage: () => set({ villagePayload: null }),
+
+  // ── 성 진입 ───────────────────────────────────────────────────
+  castleOpen: false,
+  openCastle: () => set({ castleOpen: true }),
+  closeCastle: () => set({ castleOpen: false }),
+
+  // ── 인벤토리 / 캐릭터 / 퀘스트 패널 ─────────────────────────
+  inventoryOpen: false,
+  characterOpen: false,
+  questOpen:     false,
+  openInventory: () => set({ inventoryOpen: true }),
+  closeInventory: () => set({ inventoryOpen: false }),
+  openCharacter: () => set({ characterOpen: true }),
+  closeCharacter: () => set({ characterOpen: false }),
+  openQuest:     () => set({ questOpen: true }),
+  closeQuest:    () => set({ questOpen: false }),
+
+  // ── 랜덤 이벤트 ──────────────────────────────────────────────
+  randomEventPayload: null,
+  showRandomEvent: (payload) => set({ randomEventPayload: payload }),
+  clearRandomEvent: () => set({ randomEventPayload: null }),
+
+  // ── 퀘스트 인터랙션 ──────────────────────────────────────────
+  questInteractionPayload: null,
+  showQuestInteraction: (payload) => set({ questInteractionPayload: payload }),
+  clearQuestInteraction: () => set({ questInteractionPayload: null }),
+
   resetInGameUI: () => set({
     activeModal:       null,
     modalData:         null,
@@ -144,5 +215,19 @@ export const useUIStore = create((set, get) => ({
     isDragonCutscene:  false,
     isBattleLogVisible:false,
     selectedTile:      null,
+    isMyTurn:          false,
+    myTurnPlayerId:    null,
+    pendingTargetId:   null,
+    resultPayload:     null,
+    showingRevivePrompt: false,
+    gameOverReason:    null,
+    hoveredTile:       null,
+    villagePayload:    null,
+    castleOpen:        false,
+    inventoryOpen:     false,
+    characterOpen:     false,
+    questOpen:         false,
+    randomEventPayload:    null,
+    questInteractionPayload: null,
   }),
 }));

@@ -50,9 +50,16 @@ const initialState = {
   inDungeon:       false,
   dungeonGraph:    null,   // { nodes, edges, currentNodeId }
 
+  // ── 파티 위치 ─────────────────────────────
+  partyPos:        null,   // { x, y } 현재 파티 위치
+
+  // ── 퀘스트 진행도 ─────────────────────────
+  questProgress:   {},     // { main_0, main_1, ... } → QUEST_STATUS 값
+
   // ── 네트워크 ──────────────────────────────
   hostId:          null,   // PeerJS host ID
   isHost:          false,
+  localPlayerId:   null,   // 이 클라이언트의 플레이어 ID
 };
 
 export const useGameStore = create((set, get) => ({
@@ -201,4 +208,63 @@ export const useGameStore = create((set, get) => ({
 
   // ── 네트워크 ──────────────────────────────
   setHostInfo: (hostId, isHost) => set({ hostId, isHost }),
+  setLocalPlayerId: (id) => set({ localPlayerId: id }),
+
+  // ── 파티 이동 ─────────────────────────────
+  moveParty: (pos) => set({ partyPos: pos }),
+
+  // ── 드래곤 이동 (WorldMapScene._runEnemyAIPhase 에서 호출) ──
+  moveDragon: (pos) => set({ dragonPos: pos }),
+
+  // ── 월드 턴 진행 (GDD §8.1) ───────────────
+  advanceWorldTurn: () => set((state) => {
+    const nextIdx = (state.currentPlayerIndex + 1) % state.playerCount;
+    return {
+      worldTurn:          nextIdx === 0 ? state.worldTurn + 1 : state.worldTurn,
+      currentPlayerIndex: nextIdx,
+    };
+  }),
+
+  // ── 퀘스트 진행도 갱신 ────────────────────
+  setQuestProgress: (key, status) => set((state) => ({
+    questProgress: { ...state.questProgress, [key]: status },
+  })),
+
+  setPlayerCount: (count) => set({ playerCount: count }),
+
+  // SyncManager.broadcastSnapshot() 에서 직렬화
+  getSnapshot: () => {
+    const s = get();
+    return {
+      currentScene:  s.currentScene,
+      worldTurn:     s.worldTurn,
+      playerCount:   s.playerCount,
+      inBattle:      s.inBattle,
+      inDungeon:     s.inDungeon,
+      dragonPos:     s.dragonPos,
+      dragonThreat:  s.dragonThreat,
+      castlePos:     s.castlePos,
+      partyPos:      s.partyPos,
+      battleEnemies: s.battleEnemies,
+      battleLog:     s.battleLog,
+    };
+  },
+
+  // STATE_SNAPSHOT 수신 시 클라이언트 스토어 적용
+  applySnapshot: (snap) => {
+    if (!snap) return;
+    set((state) => ({
+      currentScene:  snap.currentScene  ?? state.currentScene,
+      worldTurn:     snap.worldTurn     ?? state.worldTurn,
+      playerCount:   snap.playerCount   ?? state.playerCount,
+      inBattle:      snap.inBattle      ?? state.inBattle,
+      inDungeon:     snap.inDungeon     ?? state.inDungeon,
+      dragonPos:     snap.dragonPos     ?? state.dragonPos,
+      dragonThreat:  snap.dragonThreat  ?? state.dragonThreat,
+      castlePos:     snap.castlePos     ?? state.castlePos,
+      partyPos:      snap.partyPos      ?? state.partyPos,
+      battleEnemies: snap.battleEnemies ?? state.battleEnemies,
+      battleLog:     snap.battleLog     ?? state.battleLog,
+    }));
+  },
 }));

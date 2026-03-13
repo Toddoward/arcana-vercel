@@ -4,7 +4,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { SCENE } from '../constants/constants.js';
-import { useUIStore } from '../stores/uiStore.js';
+import { useUiStore } from '../stores/uiStore.js';
 import { useGameStore } from '../stores/gameStore.js';
 
 // ── 씬 클래스 베이스 (모든 씬이 상속) ──────────────────────
@@ -88,6 +88,9 @@ export class SceneManager {
 
   // ── 씬 전환 ──────────────────────────────────────────────
   // payload: 다음 씬에 전달할 임의 데이터 (선택적)
+  // switchTo: goTo의 별칭 (씬 내부에서 this.sceneManager.switchTo() 로 호출)
+  switchTo(sceneKey, payload = {}) { return this.goTo(sceneKey, payload); }
+
   async goTo(sceneKey, payload = {}) {
     const next = this.scenes[sceneKey];
     if (!next) {
@@ -110,8 +113,8 @@ export class SceneManager {
     this.currentScene.onEnter(payload);
 
     // Zustand uiStore 동기화
-    useUIStore.getState().goToScene(sceneKey);
-    useUIStore.getState().resetInGameUI();
+    useUiStore.getState().goToScene(sceneKey);
+    useUiStore.getState().resetInGameUI();
 
     this.clock.getDelta(); // 누적 delta 리셋
   }

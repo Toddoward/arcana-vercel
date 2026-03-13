@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorldGenerator Test</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Cinzel:wght@400;600&display=swap');
+
+  :root {
+    --bg:       #0a0c0f;
+    --panel:    #111318;
+    --border:   #2a2d35;
+    --accent:   #c9a84c;
+    --accent2:  #5b8dd9;
+    --danger:   #cc4444;
+    --text:     #c8cdd8;
+    --dim:      #5a5f6e;
+    --mono:     'Share Tech Mono', monospace;
+    --serif:    'Cinzel', serif;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── 사이드 패널 ── */
+  #sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  #sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    background: #0d0f14;
+  }
+
+  #sidebar-header h1 {
+    font-family: var(--serif);
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+
+  #sidebar-header p {
+    color: var(--dim);
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  .section {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+  }
+
+  .section-title {
+    font-family: var(--serif);
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.8;
+  }
+
+  .control-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+
+  .control-label {
+    color: var(--dim);
+    font-size: 10px;
+    white-space: nowrap;
+    flex: 1;
+  }
+
+  .control-value {
+    color: var(--accent);
+    font-size: 11px;
+    width: 42px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 90px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    flex-shrink: 0;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  input[type=number], input[type=text] {
+    background: #0a0c0f;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 6px;
+    width: 100%;
+    outline: none;
+  }
+
+  input[type=number]:focus, input[type=text]:focus {
+    border-color: var(--accent);
+  }
+
+  .seed-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .seed-row input { flex:1; }
+
+  .btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 4px 8px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: bold;
+    width: 100%;
+    padding: 8px;
+    font-size: 11px;
+    margin-top: 4px;
+    letter-spacing: 2px;
+  }
+
+  .btn-primary:hover { background: #e0bc60; border-color: #e0bc60; color:#000; }
+
+  /* ── 범례 ── */
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 5px;
+    font-size: 10px;
+    color: var(--dim);
+  }
+
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  /* ── 스탯 ── */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 10px;
+  }
+
+  .stat-key { color: var(--dim); }
+  .stat-val { color: var(--accent); }
+
+  /* ── 메인 캔버스 영역 ── */
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #toolbar {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    background: #0d0f14;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  #toolbar span {
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 1px;
+  }
+
+  .mode-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 10px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.15s;
+  }
+
+  .mode-btn.active {
+    border-color: var(--accent2);
+    color: var(--accent2);
+    background: rgba(91,141,217,0.08);
+  }
+
+  #canvas-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    max-width: 100%;
+    max-height: 100%;
+    box-shadow: 0 0 40px rgba(0,0,0,0.6), 0 0 0 1px var(--border);
+  }
+
+  #status {
+    position: absolute;
+    bottom: 10px;
+    right: 16px;
+    font-size: 10px;
+    color: var(--dim);
+    letter-spacing: 1px;
+  }
+
+  #hover-info {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(10,12,15,0.9);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    font-size: 10px;
+    pointer-events: none;
+    display: none;
+    min-width: 160px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── 사이드바 ── -->
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h1>WORLD GENERATOR</h1>
+    <p>ARCANA / MAP DEBUG TOOL</p>
+  </div>
+
+  <!-- 시드 -->
+  <div class="section">
+    <div class="section-title">SEED</div>
+    <div class="seed-row">
+      <input type="text" id="seed" value="42">
+      <button class="btn" onclick="randomSeed()">RND</button>
+    </div>
+  </div>
+
+  <!-- 맵 크기 -->
+  <div class="section">
+    <div class="section-title">MAP SIZE</div>
+    <div class="control-row">
+      <span class="control-label">COLS</span>
+      <input type="range" id="worldCols" min="15" max="120" step="1" value="60" oninput="syncVal(this,'worldColsVal')">
+      <span class="control-value" id="worldColsVal">60</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">ROWS</span>
+      <input type="range" id="worldRows" min="15" max="120" step="1" value="60" oninput="syncVal(this,'worldRowsVal')">
+      <span class="control-value" id="worldRowsVal">60</span>
+    </div>
+  </div>
+
+  <!-- 노이즈 -->
+  <div class="section">
+    <div class="section-title">NOISE</div>
+    <div class="control-row">
+      <span class="control-label">OCTAVES</span>
+      <input type="range" id="octaves" min="1" max="8" step="1" value="6" oninput="syncVal(this,'octavesVal')">
+      <span class="control-value" id="octavesVal">6</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">PERSISTENCE</span>
+      <input type="range" id="persistence" min="0.1" max="0.9" step="0.05" value="0.1" oninput="syncVal(this,'persistenceVal')">
+      <span class="control-value" id="persistenceVal">0.10</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">LACUNARITY</span>
+      <input type="range" id="lacunarity" min="1.0" max="4.0" step="0.1" value="2.0" oninput="syncVal(this,'lacunarityVal')">
+      <span class="control-value" id="lacunarityVal">2.0</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">SCALE</span>
+      <input type="range" id="scale" min="0.02" max="0.4" step="0.01" value="0.2" oninput="syncVal(this,'scaleVal')">
+      <span class="control-value" id="scaleVal">0.20</span>
+    </div>
+  </div>
+
+  <!-- 아일랜드 -->
+  <div class="section">
+    <div class="section-title">ISLAND SHAPE</div>
+    <div class="control-row">
+      <span class="control-label">GRADIENT STR</span>
+      <input type="range" id="gradientStr" min="0.0" max="2.5" step="0.05" value="1.3" oninput="syncVal(this,'gradientStrVal')">
+      <span class="control-value" id="gradientStrVal">1.30</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">MIN RATIO</span>
+      <input type="range" id="minLandRatio" min="0.1" max="0.6" step="0.01" value="0.35" oninput="syncVal(this,'minLandRatioVal')">
+      <span class="control-value" id="minLandRatioVal">0.35</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">MAX RATIO</span>
+      <input type="range" id="maxLandRatio" min="0.2" max="0.8" step="0.01" value="0.55" oninput="syncVal(this,'maxLandRatioVal')">
+      <span class="control-value" id="maxLandRatioVal">0.55</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">MAX ITER</span>
+      <input type="range" id="maxIter" min="3" max="30" step="1" value="15" oninput="syncVal(this,'maxIterVal')">
+      <span class="control-value" id="maxIterVal">15</span>
+    </div>
+  </div>
+
+  <!-- Voronoi -->
+  <div class="section">
+    <div class="section-title">VORONOI BIOME</div>
+    <div class="control-row">
+      <span class="control-label">CENTROIDS</span>
+      <input type="range" id="centroidCount" min="5" max="40" step="1" value="18" oninput="syncVal(this,'centroidCountVal')">
+      <span class="control-value" id="centroidCountVal">18</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">MIN DIST</span>
+      <input type="range" id="minCentDist" min="1" max="8" step="1" value="3" oninput="syncVal(this,'minCentDistVal')">
+      <span class="control-value" id="minCentDistVal">3</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">CASTLE MARGIN</span>
+      <input type="range" id="castleMargin" min="1" max="10" step="1" value="3" oninput="syncVal(this,'castleMarginVal')">
+      <span class="control-value" id="castleMarginVal">3</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">DRAGON MARGIN</span>
+      <input type="range" id="dragonMargin" min="1" max="10" step="1" value="3" oninput="syncVal(this,'dragonMarginVal')">
+      <span class="control-value" id="dragonMarginVal">3</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">JITTER</span>
+      <input type="range" id="jitter" min="0.0" max="2.0" step="0.05" value="0.9" oninput="syncVal(this,'jitterVal')">
+      <span class="control-value" id="jitterVal">0.90</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">VILLAGE DIST</span>
+      <input type="range" id="villageDist" min="1" max="8" step="1" value="4" oninput="syncVal(this,'villageDistVal')">
+      <span class="control-value" id="villageDistVal">4</span>
+    </div>
+  </div>
+
+  <!-- 생성 버튼 -->
+  <div class="section">
+    <button class="btn btn-primary" onclick="generate()">▶ GENERATE</button>
+  </div>
+
+  <!-- 범례 -->
+  <div class="section">
+    <div class="section-title">LEGEND</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#1a3a1a"></div>PLAINS</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#0d2e0d"></div>FOREST</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#1a2a3a"></div>SNOWFIELD</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#3a1a0a"></div>VOLCANO</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#2a0808"></div>DRAGON NEST</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#2a2010"></div>CASTLE ZONE</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#0a0a0f"></div>OCEAN</div>
+    <div style="margin-top:8px;">
+      <div class="legend-item"><span style="color:#c9a84c;font-size:14px">★</span>&nbsp;CASTLE</div>
+      <div class="legend-item"><span style="color:#cc4444;font-size:14px">✦</span>&nbsp;DRAGON SPAWN</div>
+      <div class="legend-item"><span style="color:#5b8dd9;font-size:12px">▲</span>&nbsp;VILLAGE</div>
+      <div class="legend-item"><span style="color:#cc4444;font-size:12px">⊕</span>&nbsp;DRAGON NEST</div>
+      <div class="legend-item"><span style="color:#888;font-size:11px">·</span>&nbsp;CENTROID</div>
+    </div>
+  </div>
+
+  <!-- 통계 -->
+  <div class="section" id="stats-section">
+    <div class="section-title">STATS</div>
+    <div id="stats"></div>
+  </div>
+</div>
+
+<!-- ── 메인 캔버스 영역 ── -->
+<div id="main">
+  <div id="toolbar">
+    <span>VIEW MODE</span>
+    <button class="mode-btn active" id="btn-biome" onclick="setMode('biome')">BIOME</button>
+    <button class="mode-btn" id="btn-noise" onclick="setMode('noise')">NOISE</button>
+    <button class="mode-btn" id="btn-grad" onclick="setMode('grad')">GRADIENT</button>
+    <button class="mode-btn" id="btn-final" onclick="setMode('final')">FINAL MASK</button>
+    <div style="flex:1"></div>
+    <button class="btn" onclick="exportPNG()">EXPORT PNG</button>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+    <div id="hover-info"></div>
+    <div id="status">READY</div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// CONFIG — WorldGenerator 로직 인라인
+// ================================================================
+let CONFIG = {
+  WORLD_COLS:          25,
+  WORLD_ROWS:          25,
+  NOISE_OCTAVES:        5,
+  NOISE_PERSISTENCE:  0.5,
+  NOISE_LACUNARITY:   2.0,
+  NOISE_SCALE:        0.15,
+  GRADIENT_STRENGTH:  1.3,
+  MIN_LAND_RATIO:     0.35,
+  MAX_LAND_RATIO:     0.55,
+  MAX_ITER:             15,
+  BIOME_CENTROID_COUNT: 18,
+  MIN_CENTROID_DIST:    3,
+  CASTLE_MARGIN:        3,   // 섬 해안 → 성 centroid 거리
+  DRAGON_MARGIN:        3,   // 섬 해안 → 드래곤 centroid 거리
+  BIOME_BORDER_JITTER: 0.9,
+  VILLAGE_MIN_DIST:     4,
+};
+
+const TILE = {
+  EMPTY:'EMPTY', VILLAGE:'VILLAGE', ENEMY:'ENEMY', DUNGEON:'DUNGEON',
+  QUEST:'QUEST', RANDOM_EVENT:'RANDOM_EVENT', CASTLE:'CASTLE',
+  BOSS:'BOSS', VILLAGE_BURNED:'VILLAGE_BURNED',
+};
+
+const BIOME = {
+  PLAINS:'PLAINS', FOREST:'FOREST', SNOWFIELD:'SNOWFIELD',
+  VOLCANO:'VOLCANO', DRAGON_NEST:'DRAGON_NEST', CASTLE:'CASTLE',
+};
+
+const BIOME_COLOR = {
+  [BIOME.PLAINS]:      '#1a3a1a',
+  [BIOME.FOREST]:      '#0d2e0d',
+  [BIOME.SNOWFIELD]:   '#1a2a3a',
+  [BIOME.VOLCANO]:     '#3a1a0a',
+  [BIOME.DRAGON_NEST]: '#2a0808',
+  [BIOME.CASTLE]:      '#2a2010',
+};
+
+const BIOME_COLOR_BRIGHT = {
+  [BIOME.PLAINS]:      '#2a6a2a',
+  [BIOME.FOREST]:      '#1a5c1a',
+  [BIOME.SNOWFIELD]:   '#2a4a6a',
+  [BIOME.VOLCANO]:     '#7a3a0a',
+  [BIOME.DRAGON_NEST]: '#6a1010',
+  [BIOME.CASTLE]:      '#6a5820',
+};
+
+const TILE_COLOR = {
+  [TILE.VILLAGE]:      '#5b8dd9',
+  [TILE.DUNGEON]:      '#8855bb',
+  [TILE.ENEMY]:        '#bb4444',
+  [TILE.QUEST]:        '#ddaa33',
+  [TILE.RANDOM_EVENT]: '#44aaaa',
+  [TILE.BOSS]:         '#ff2222',
+  [TILE.EMPTY]:        null,
+};
+
+const DISTANCE_BIOME_TABLE = [
+  { maxRatio:0.35, weights:[{biome:BIOME.PLAINS,w:70},{biome:BIOME.SNOWFIELD,w:20},{biome:BIOME.FOREST,w:10}] },
+  { maxRatio:0.65, weights:[{biome:BIOME.FOREST,w:40},{biome:BIOME.SNOWFIELD,w:35},{biome:BIOME.PLAINS,w:25}] },
+  { maxRatio:0.85, weights:[{biome:BIOME.VOLCANO,w:45},{biome:BIOME.FOREST,w:35},{biome:BIOME.SNOWFIELD,w:20}] },
+  { maxRatio:1.0,  weights:[{biome:BIOME.VOLCANO,w:60},{biome:BIOME.FOREST,w:40}] },
+];
+
+const BIOME_TILE_WEIGHTS = {
+  [BIOME.CASTLE]:      [{type:TILE.EMPTY,w:100}],
+  [BIOME.PLAINS]:      [{type:TILE.EMPTY,w:60},{type:TILE.ENEMY,w:20},{type:TILE.VILLAGE,w:12},{type:TILE.DUNGEON,w:5},{type:TILE.QUEST,w:2},{type:TILE.RANDOM_EVENT,w:1}],
+  [BIOME.FOREST]:      [{type:TILE.EMPTY,w:55},{type:TILE.ENEMY,w:25},{type:TILE.DUNGEON,w:10},{type:TILE.QUEST,w:7},{type:TILE.RANDOM_EVENT,w:3}],
+  [BIOME.SNOWFIELD]:   [{type:TILE.EMPTY,w:58},{type:TILE.ENEMY,w:22},{type:TILE.DUNGEON,w:8},{type:TILE.VILLAGE,w:8},{type:TILE.QUEST,w:4}],
+  [BIOME.VOLCANO]:     [{type:TILE.EMPTY,w:50},{type:TILE.ENEMY,w:35},{type:TILE.DUNGEON,w:10},{type:TILE.QUEST,w:5}],
+  [BIOME.DRAGON_NEST]: [{type:TILE.EMPTY,w:40},{type:TILE.ENEMY,w:50},{type:TILE.DUNGEON,w:10}],
+};
+
+// ================================================================
+// WorldGenerator 클래스 (WorldGenerator.js 전체 인라인)
+// ================================================================
+class WorldGenerator {
+  constructor(seed = Date.now()) {
+    this._seed = seed >>> 0;
+    this._rng  = this._makeLCG(this._seed);
+    // 디버그 데이터
+    this.debug = { noiseMap: null, gradMap: null, finalMap: null, centroids: [], effectiveThreshold: null, iters: 0 };
+  }
+
+  generate(cfg) {
+    const C = cfg;
+    const COLS = C.WORLD_COLS, ROWS = C.WORLD_ROWS;
+
+    // 타일 맵
+    const tiles = new Map();
+    const setTile    = (x,y,d) => tiles.set(`${x},${y}`, {x,y,...d});
+    const getTile    = (x,y)   => tiles.get(`${x},${y}`) ?? null;
+    const updateTile = (x,y,p) => { const t=getTile(x,y); if(t) tiles.set(`${x},${y}`,{...t,...p}); };
+    const getAllTiles = ()      => Array.from(tiles.values());
+    const getByType  = (type)  => getAllTiles().filter(t=>t.type===type);
+
+    // ── [1~2] 전체 타일 finalValue 계산 ──
+    const noiseMap = [], gradMap = [], finalMap = [];
+    for (let y = 0; y < ROWS; y++) {
+      noiseMap[y] = []; gradMap[y] = []; finalMap[y] = [];
+      for (let x = 0; x < COLS; x++) {
+        const nx = x / COLS, ny = y / ROWS;
+        const nv = this._fbm(nx, ny, C);
+        const gx = Math.abs(nx-0.5)*2, gy = Math.abs(ny-0.5)*2;
+        const g  = Math.max(gx, gy);
+        noiseMap[y][x] = nv;
+        gradMap[y][x]  = g;
+        finalMap[y][x] = nv - g * C.GRADIENT_STRENGTH;
+      }
+    }
+    this.debug.noiseMap = noiseMap;
+    this.debug.gradMap  = gradMap;
+    this.debug.finalMap = finalMap;
+
+    // ── [3] 경계 타일 예측 기반 적응형 Threshold 탐색 ──
+    const TOTAL      = COLS * ROWS;
+    const targetMin  = Math.ceil(C.MIN_LAND_RATIO  * TOTAL);
+    const targetMax  = Math.floor(C.MAX_LAND_RATIO * TOTAL);
+    const targetMid  = (C.MIN_LAND_RATIO + C.MAX_LAND_RATIO) / 2;
+
+    // 초기 T: 전체 finalValue 정렬 후 목표 중앙 비율 percentile
+    const allVals = [];
+    for (let y=0;y<ROWS;y++) for (let x=0;x<COLS;x++) allVals.push(finalMap[y][x]);
+    allVals.sort((a,b)=>a-b);
+    let T = allVals[Math.floor((1 - targetMid) * allVals.length)];
+
+    // 4방향 인접 (마스크 단계용)
+    const maskNeighbors = (x,y) => [[x-1,y],[x+1,y],[x,y-1],[x,y+1]];
+
+    // BFS: 최대 컴포넌트 + 내외부 경계 타일 동시 수집
+    const largestWithBoundary = (candidates) => {
+      const visited   = new Set();
+      let bestComp    = new Set();
+      let bestExt     = [], bestInt = [];
+
+      for (const startKey of candidates) {
+        if (visited.has(startKey)) continue;
+        const [sx,sy] = startKey.split(',').map(Number);
+        const comp = new Set();
+        const extMap = new Map();
+        const intList = [];
+        const queue  = [[sx,sy]];
+        comp.add(startKey);
+        visited.add(startKey);
+
+        while (queue.length > 0) {
+          const [x,y]  = queue.shift();
+          let onBorder = false;
+          for (const [nx,ny] of maskNeighbors(x,y)) {
+            if (nx<0||nx>=COLS||ny<0||ny>=ROWS) { onBorder=true; continue; }
+            const nk = `${nx},${ny}`;
+            if (candidates.has(nk)) {
+              if (!visited.has(nk)) { visited.add(nk); comp.add(nk); queue.push([nx,ny]); }
+            } else {
+              onBorder = true;
+              if (!extMap.has(nk)) extMap.set(nk, finalMap[ny][nx]);
+            }
+          }
+          if (onBorder) intList.push({ val: finalMap[y][x] });
+        }
+
+        if (comp.size > bestComp.size) {
+          bestComp = comp;
+          bestExt  = Array.from(extMap.values()).map(val=>({val}));
+          bestInt  = intList;
+        }
+      }
+      return { comp: bestComp, ext: bestExt, int: bestInt };
+    };
+
+    let bestMask      = null;
+    let bestRatioDiff = Infinity;
+    let effectiveT    = T;
+    let iters         = 0;
+
+    for (let iter = 0; iter < C.MAX_ITER; iter++) {
+      iters = iter + 1;
+      const candidates = new Set();
+      for (let y=0;y<ROWS;y++)
+        for (let x=0;x<COLS;x++)
+          if (finalMap[y][x] >= T) candidates.add(`${x},${y}`);
+
+      const { comp, ext, int: intBound } = largestWithBoundary(candidates);
+      const size  = comp.size;
+      const ratio = size / TOTAL;
+      const diff  = Math.abs(ratio - targetMid);
+
+      if (diff < bestRatioDiff) {
+        bestRatioDiff = diff;
+        effectiveT    = T;
+        bestMask      = comp;
+      }
+
+      if (size >= targetMin && size <= targetMax) break;
+
+      if (size < targetMin) {
+        const needed = targetMin - size;
+        ext.sort((a,b)=>b.val-a.val);
+        const idx = Math.min(needed-1, ext.length-1);
+        if (ext.length===0||idx<0) break;
+        T = ext[idx].val - 1e-9;
+      } else {
+        const excess = size - targetMax;
+        intBound.sort((a,b)=>a.val-b.val);
+        const idx = Math.min(excess-1, intBound.length-1);
+        if (intBound.length===0||idx<0) break;
+        T = intBound[idx].val + 1e-9;
+      }
+    }
+
+    this.debug.effectiveThreshold = effectiveT;
+    this.debug.iters = iters;
+
+    // 최대 컴포넌트 타일만 육지로 등록
+    const landMask = bestMask ?? new Set();
+    for (const key of landMask) {
+      const [x,y] = key.split(',').map(Number);
+      setTile(x, y, { type: TILE.EMPTY, biome: BIOME.PLAINS, entities:[] });
+    }
+
+    // ── [4] centroid 배치 ──
+    const centroids = [];
+    const landTilesArr = getAllTiles();
+    if (landTilesArr.length === 0) return { tiles, castlePos:{x:0,y:0}, dragonSpawn:{x:0,y:0}, centroids:[], iters };
+    let att = 0;
+    while (centroids.length < C.BIOME_CENTROID_COUNT && att < C.BIOME_CENTROID_COUNT * 30) {
+      att++;
+      const c = landTilesArr[Math.floor(this._rng() * landTilesArr.length)];
+      if (!centroids.some(e => Math.hypot(e.x-c.x, e.y-c.y) < C.MIN_CENTROID_DIST))
+        centroids.push({ x:c.x, y:c.y, biome:BIOME.PLAINS });
+    }
+    this.debug.centroids = centroids;
+
+    // ── [5] Castle / Dragon centroid 배치 ──
+    // 섬 무게중심
+    const allLand = getAllTiles();
+    const cx = allLand.reduce((s,t)=>s+t.x,0) / allLand.length;
+    const cy = allLand.reduce((s,t)=>s+t.y,0) / allLand.length;
+
+    // edge 타일: 바다(또는 맵 외곽)와 인접한 육지 타일
+    const edgeTiles = allLand.filter(t =>
+      [[-1,0],[1,0],[0,-1],[0,1]].some(([dx,dy]) => {
+        const nx=t.x+dx, ny=t.y+dy;
+        return nx<0||nx>=COLS||ny<0||ny>=ROWS||!tiles.has(`${nx},${ny}`);
+      })
+    );
+
+    // edge → 무게중심 방향 margin 이동 → 육지 필터 → 중복 제거
+    const marginCandidates = (pool, margin) => {
+      const seen = new Set(), result = [];
+      for (const t of pool) {
+        const dx=cx-t.x, dy=cy-t.y, len=Math.hypot(dx,dy);
+        if (len===0) continue;
+        const tx=Math.round(t.x+(dx/len)*margin);
+        const ty=Math.round(t.y+(dy/len)*margin);
+        const key=`${tx},${ty}`;
+        if (!seen.has(key) && tiles.has(key)) { seen.add(key); result.push({x:tx,y:ty,biome:BIOME.PLAINS}); }
+      }
+      if (result.length===0) {
+        const fb = allLand.reduce((b,t)=>Math.hypot(t.x-cx,t.y-cy)<Math.hypot(b.x-cx,b.y-cy)?t:b);
+        result.push({x:fb.x,y:fb.y,biome:BIOME.PLAINS});
+      }
+      return result;
+    };
+
+    // Castle: 전체 edge → CASTLE_MARGIN 이동 → 랜덤
+    const castleCands = marginCandidates(edgeTiles, C.CASTLE_MARGIN);
+    const cc = castleCands[Math.floor(this._rng() * castleCands.length)];
+    cc.biome = BIOME.CASTLE;
+    centroids.push(cc);
+    const castlePos = { x:cc.x, y:cc.y };
+
+    // Dragon: 반대편 edge → DRAGON_MARGIN 이동 → 성에서 가장 먼 것
+    const toCastleX = castlePos.x-cx, toCastleY = castlePos.y-cy;
+    const dragonEdge = edgeTiles.filter(t=>(t.x-cx)*toCastleX+(t.y-cy)*toCastleY<0);
+    const dragonPool = dragonEdge.length>0 ? dragonEdge : edgeTiles;
+    const dragonCands = marginCandidates(dragonPool, C.DRAGON_MARGIN);
+    const nest = dragonCands.reduce((b,c)=>
+      Math.hypot(c.x-castlePos.x,c.y-castlePos.y)>Math.hypot(b.x-castlePos.x,b.y-castlePos.y)?c:b
+    );
+    nest.biome = BIOME.DRAGON_NEST;
+    centroids.push(nest);
+    // nest centroid는 Dragon Nest 바이옴 중심 — 드래곤 스폰은 BOSS 타일 위치로 결정됨
+
+    // 나머지 centroid 거리 비율 기반 바이옴 배정
+    const maxD = Math.hypot(nest.x-castlePos.x, nest.y-castlePos.y);
+    for (const c of centroids) {
+      if (c.biome===BIOME.CASTLE||c.biome===BIOME.DRAGON_NEST) continue;
+      const ratio = maxD>0 ? Math.hypot(c.x-castlePos.x,c.y-castlePos.y)/maxD : 0;
+      c.biome = this._biomeByRatio(ratio, C);
+    }
+    this.debug.centroids = centroids;
+
+    // ── [6] Voronoi 바이옴 배정 ──
+    for (const tile of getAllTiles()) {
+      const jx = (this._hash2(tile.x*7,  tile.y*3)  - 0.5) * C.BIOME_BORDER_JITTER;
+      const jy = (this._hash2(tile.x*11, tile.y*13) - 0.5) * C.BIOME_BORDER_JITTER;
+      const qx = tile.x + jx, qy = tile.y + jy;
+      let minD = Infinity, best = centroids[0];
+      for (const c of centroids) {
+        const d = Math.hypot(qx-c.x, qy-c.y);
+        if (d < minD) { minD = d; best = c; }
+      }
+      updateTile(tile.x, tile.y, { biome: best.biome });
+    }
+
+    // 성 타일
+    updateTile(castlePos.x, castlePos.y, { type: TILE.CASTLE, biome: BIOME.CASTLE });
+
+    // ── [7] 타일 타입 배치 ──
+    for (const tile of getAllTiles()) {
+      if (tile.type === TILE.CASTLE) continue;
+      const weights = BIOME_TILE_WEIGHTS[tile.biome] ?? BIOME_TILE_WEIGHTS[BIOME.PLAINS];
+      const chosen  = this._weightedRandom(weights);
+      if (chosen === TILE.VILLAGE) {
+        const near = getByType(TILE.VILLAGE).some(v => Math.hypot(v.x-tile.x, v.y-tile.y) < C.VILLAGE_MIN_DIST);
+        if (near) { updateTile(tile.x, tile.y, { type: TILE.EMPTY }); continue; }
+      }
+      updateTile(tile.x, tile.y, { type: chosen });
+    }
+
+    // BOSS 타일 (Dragon Nest 바이옴 내 1개) → 위치가 드래곤 스폰 지점
+    const nestCands = getAllTiles().filter(t => t.biome===BIOME.DRAGON_NEST && t.type===TILE.EMPTY);
+    let dragonSpawn = { x:0, y:0 };
+    if (nestCands.length > 0) {
+      const p2 = nestCands[Math.floor(this._rng()*nestCands.length)];
+      updateTile(p2.x, p2.y, { type: TILE.BOSS });
+      dragonSpawn = { x: p2.x, y: p2.y };
+    }
+
+    return { tiles, castlePos, dragonSpawn, centroids, iters };
+  }
+
+  _biomeByRatio(ratio, C) {
+    for (const tier of DISTANCE_BIOME_TABLE)
+      if (ratio <= tier.maxRatio) return this._weightedRandom(tier.weights);
+    return BIOME.VOLCANO;
+  }
+
+  _weightedRandom(opts) {
+    const tot = opts.reduce((s,o)=>s+(o.w??1),0);
+    let r = this._rng()*tot;
+    for (const o of opts) { r-=o.w??1; if(r<=0) return o.biome??o.type; }
+    return opts[opts.length-1].biome??opts[opts.length-1].type;
+  }
+
+  _fbm(nx, ny, C) {
+    let v=0, a=1, f=1, m=0;
+    for (let i=0; i<C.NOISE_OCTAVES; i++) {
+      v += this._valueNoise(nx*f*C.NOISE_SCALE*C.WORLD_COLS, ny*f*C.NOISE_SCALE*C.WORLD_ROWS)*a;
+      m += a; a *= C.NOISE_PERSISTENCE; f *= C.NOISE_LACUNARITY;
+    }
+    return v/m;
+  }
+
+  _valueNoise(x, y) {
+    const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy;
+    const ux=fx*fx*(3-2*fx), uy=fy*fy*(3-2*fy);
+    return this._hash2(ix,iy)*(1-ux)*(1-uy)+this._hash2(ix+1,iy)*ux*(1-uy)+
+           this._hash2(ix,iy+1)*(1-ux)*uy+this._hash2(ix+1,iy+1)*ux*uy;
+  }
+
+  _hash2(ix, iy) {
+    let h=(ix*1619+iy*31337+this._seed*1000003)|0;
+    h^=(h>>>13); h=(Math.imul(h,0x9e3779b9))|0; h^=(h>>>11); h^=(h>>>16);
+    return (h&0x7fffffff)/0x7fffffff;
+  }
+
+  _makeLCG(seed) {
+    let s=seed>>>0;
+    return ()=>{ s=(Math.imul(1664525,s)+1013904223)>>>0; return s/0x100000000; };
+  }
+}
+
+// ================================================================
+// 렌더링
+// ================================================================
+const canvas    = document.getElementById('canvas');
+const ctx       = canvas.getContext('2d');
+let lastResult  = null;
+let lastGen     = null;
+let viewMode    = 'biome';
+const CELL      = 18; // 픽셀당 타일 크기
+
+function setMode(mode) {
+  viewMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btn-'+mode).classList.add('active');
+  if (lastResult) render(lastResult, lastGen);
+}
+
+function getConfig() {
+  const g = (id) => parseFloat(document.getElementById(id).value);
+  const gi = (id) => parseInt(document.getElementById(id).value);
+  return {
+    WORLD_COLS:           gi('worldCols'),
+    WORLD_ROWS:           gi('worldRows'),
+    NOISE_OCTAVES:        gi('octaves'),
+    NOISE_PERSISTENCE:    g('persistence'),
+    NOISE_LACUNARITY:     g('lacunarity'),
+    NOISE_SCALE:          g('scale'),
+    GRADIENT_STRENGTH:    g('gradientStr'),
+    MIN_LAND_RATIO:       g('minLandRatio'),
+    MAX_LAND_RATIO:       g('maxLandRatio'),
+    MAX_ITER:             gi('maxIter'),
+    BIOME_CENTROID_COUNT: gi('centroidCount'),
+    MIN_CENTROID_DIST:    gi('minCentDist'),
+    CASTLE_MARGIN:        gi('castleMargin'),
+    DRAGON_MARGIN:        gi('dragonMargin'),
+    BIOME_BORDER_JITTER:  g('jitter'),
+    VILLAGE_MIN_DIST:     gi('villageDist'),
+  };
+}
+
+function syncVal(el, valId) {
+  const v = parseFloat(el.value);
+  document.getElementById(valId).textContent = Number.isInteger(v) ? v : v.toFixed(2);
+}
+
+function randomSeed() {
+  document.getElementById('seed').value = Math.floor(Math.random()*999999);
+}
+
+function generate() {
+  const cfg  = getConfig();
+  const seed = parseInt(document.getElementById('seed').value) || 42;
+  const t0   = performance.now();
+
+  const gen    = new WorldGenerator(seed);
+  const result = gen.generate(cfg);
+  const ms     = (performance.now()-t0).toFixed(1);
+
+  lastResult = result;
+  lastGen    = gen;
+  render(result, gen, cfg);
+  updateStats(result, cfg, ms, gen);
+  document.getElementById('status').textContent = `GENERATED IN ${ms}ms  |  SEED: ${seed}`;
+}
+
+function render(result, gen, cfg) {
+  cfg = cfg || getConfig();
+  const { tiles, castlePos, dragonSpawn, centroids } = result;
+  const COLS = cfg.WORLD_COLS, ROWS = cfg.WORLD_ROWS;
+
+  canvas.width  = COLS * CELL;
+  canvas.height = ROWS * CELL;
+
+  // ── 배경 (바다) ──
+  ctx.fillStyle = '#050608';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // ── 타일 렌더 ──
+  for (let y=0; y<ROWS; y++) {
+    for (let x=0; x<COLS; x++) {
+      const key  = `${x},${y}`;
+      const tile = tiles.get(key);
+      const px   = x*CELL, py = y*CELL;
+
+      if (viewMode === 'noise' || viewMode === 'grad' || viewMode === 'final') {
+        const map = viewMode==='noise' ? gen.debug.noiseMap
+                  : viewMode==='grad'  ? gen.debug.gradMap
+                  : gen.debug.finalMap;
+        const v   = map[y][x];
+        let gv;
+        if (viewMode === 'final') {
+          const effT = gen.debug.effectiveThreshold ?? 0;
+          gv = v >= effT
+            ? Math.min(255, Math.floor((v-effT)*400+80))
+            : Math.floor(Math.max(0,(v+0.3)/0.35)*40);
+          ctx.fillStyle = v >= effT
+            ? `rgb(${gv},${gv},${gv})`
+            : `rgb(0,0,${Math.floor(20+gv*0.5)})`;
+        } else {
+          gv = Math.floor(Math.max(0,Math.min(1,v))*255);
+          ctx.fillStyle = `rgb(${gv},${gv},${gv})`;
+        }
+        ctx.fillRect(px,py,CELL,CELL);
+        continue;
+      }
+
+      // BIOME 모드
+      if (!tile) {
+        // 바다 — 깊이 그라디언트
+        const nx=x/COLS,ny=y/ROWS;
+        const gx=Math.abs(nx-0.5)*2,gy=Math.abs(ny-0.5)*2;
+        const edge=Math.max(gx,gy);
+        const dark=Math.floor(edge*12);
+        ctx.fillStyle=`rgb(${3+dark},${5+dark},${10+dark})`;
+        ctx.fillRect(px,py,CELL,CELL);
+        continue;
+      }
+
+      // 바이옴 기본색
+      ctx.fillStyle = BIOME_COLOR[tile.biome] ?? '#111';
+      ctx.fillRect(px,py,CELL,CELL);
+
+      // 테두리 (미세 음영)
+      ctx.strokeStyle='rgba(0,0,0,0.3)';
+      ctx.lineWidth=0.5;
+      ctx.strokeRect(px+0.5,py+0.5,CELL-1,CELL-1);
+
+      // 타일 타입 오버레이
+      const tc = TILE_COLOR[tile.type];
+      if (tc && tile.type !== TILE.CASTLE) {
+        ctx.fillStyle = tc + '55';
+        ctx.fillRect(px,py,CELL,CELL);
+      }
+    }
+  }
+
+  if (viewMode === 'noise' || viewMode === 'grad' || viewMode === 'final') {
+    // threshold 라인 표시 (final 모드에서만)
+    if (viewMode === 'final') {
+      ctx.strokeStyle = '#c9a84c88';
+      ctx.lineWidth   = 1;
+      ctx.setLineDash([3,3]);
+      // 이미 색으로 구분됨
+      ctx.setLineDash([]);
+    }
+    return;
+  }
+
+  // ── centroid 점 ──
+  for (const c of centroids) {
+    const px = c.x*CELL+CELL/2, py = c.y*CELL+CELL/2;
+    ctx.beginPath();
+    ctx.arc(px,py,2,0,Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fill();
+  }
+
+  // ── 아이콘 렌더 헬퍼 ──
+  const drawIcon = (x,y,char,color,size=13) => {
+    ctx.font = `bold ${size}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // 그림자
+    ctx.fillStyle='rgba(0,0,0,0.7)';
+    ctx.fillText(char, x*CELL+CELL/2+1, y*CELL+CELL/2+1);
+    ctx.fillStyle=color;
+    ctx.fillText(char, x*CELL+CELL/2, y*CELL+CELL/2);
+  };
+
+  // 타일 아이콘
+  const allTiles = Array.from(tiles.values());
+  for (const t of allTiles) {
+    if (t.type === TILE.VILLAGE)  drawIcon(t.x,t.y,'▲','#5b8dd9',11);
+    if (t.type === TILE.BOSS)     drawIcon(t.x,t.y,'⊕','#ff2222',12);  // Dragon Nest 핵심 지점
+    if (t.type === TILE.DUNGEON)  drawIcon(t.x,t.y,'▼','#8855bb',9);
+  }
+
+  // 드래곤 스폰 (= BOSS 타일 위치)
+  drawIcon(dragonSpawn.x, dragonSpawn.y, '✦', '#cc4444', 14);
+
+  // 왕국 성
+  drawIcon(castlePos.x, castlePos.y, '★', '#c9a84c', 15);
+
+  // 성-드래곤 연결선
+  ctx.beginPath();
+  ctx.moveTo(castlePos.x*CELL+CELL/2, castlePos.y*CELL+CELL/2);
+  ctx.lineTo(dragonSpawn.x*CELL+CELL/2, dragonSpawn.y*CELL+CELL/2);
+  ctx.strokeStyle='rgba(200,50,50,0.2)';
+  ctx.lineWidth=1;
+  ctx.setLineDash([4,4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ── 통계 ──
+function updateStats(result, cfg, ms, gen) {
+  const { tiles, castlePos, dragonSpawn, centroids } = result;
+  const allTiles = Array.from(tiles.values());
+  const total    = cfg.WORLD_COLS * cfg.WORLD_ROWS;
+  const land     = allTiles.length;
+  const biomeCnt = {};
+  const tileCnt  = {};
+  for (const t of allTiles) {
+    biomeCnt[t.biome] = (biomeCnt[t.biome]||0)+1;
+    tileCnt[t.type]   = (tileCnt[t.type]||0)+1;
+  }
+  const dragonDist = Math.hypot(dragonSpawn.x-castlePos.x, dragonSpawn.y-castlePos.y).toFixed(1);
+
+  const rows = [
+    ['LAND', `${land} / ${total} (${(land/total*100).toFixed(1)}%)`],
+    ['THRESH', `${gen?.debug?.effectiveThreshold?.toFixed(4) ?? '—'}`],
+    ['ITERS', `${result.iters ?? '—'}`],
+    ['CASTLE', `(${castlePos.x}, ${castlePos.y})`],
+    ['DRAGON SPAWN', `(${dragonSpawn.x}, ${dragonSpawn.y})`],
+    ['DISTANCE', `${dragonDist} tiles`],
+    ['CENTROIDS', `${centroids.length}`],
+    ['VILLAGES', `${tileCnt[TILE.VILLAGE]||0}`],
+    ['DUNGEONS', `${tileCnt[TILE.DUNGEON]||0}`],
+    ['ENEMIES', `${tileCnt[TILE.ENEMY]||0}`],
+    ['GEN TIME', `${ms}ms`],
+  ];
+
+  document.getElementById('stats').innerHTML = rows.map(([k,v])=>
+    `<div class="stat-row"><span class="stat-key">${k}</span><span class="stat-val">${v}</span></div>`
+  ).join('');
+}
+
+// ── 호버 정보 ──
+const hoverBox = document.getElementById('hover-info');
+canvas.addEventListener('mousemove', (e) => {
+  if (!lastResult) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width  / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const px = (e.clientX - rect.left)  * scaleX;
+  const py = (e.clientY - rect.top)   * scaleY;
+  const tx = Math.floor(px / CELL);
+  const ty = Math.floor(py / CELL);
+  const cfg = getConfig();
+  if (tx<0||ty<0||tx>=cfg.WORLD_COLS||ty>=cfg.WORLD_ROWS) { hoverBox.style.display='none'; return; }
+
+  const tile = lastResult.tiles.get(`${tx},${ty}`);
+  const nv   = lastGen.debug.noiseMap?.[ty]?.[tx]?.toFixed(3) ?? '—';
+  const fv   = lastGen.debug.finalMap?.[ty]?.[tx]?.toFixed(3) ?? '—';
+
+  hoverBox.style.display = 'block';
+  hoverBox.style.left    = (e.clientX - rect.left + 12)+'px';
+  hoverBox.style.top     = (e.clientY - rect.top  + 12)+'px';
+  hoverBox.innerHTML = tile
+    ? `<b style="color:#c9a84c">(${tx}, ${ty})</b><br>BIOME: ${tile.biome}<br>TYPE: ${tile.type}<br>NOISE: ${nv}<br>FINAL: ${fv}`
+    : `<b style="color:#c9a84c">(${tx}, ${ty})</b><br>OCEAN<br>NOISE: ${nv}<br>FINAL: ${fv}`;
+});
+
+canvas.addEventListener('mouseleave', () => { hoverBox.style.display='none'; });
+
+// ── PNG 내보내기 ──
+function exportPNG() {
+  if (!lastResult) return;
+  const link = document.createElement('a');
+  link.download = `world_seed${document.getElementById('seed').value}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+// ── 슬라이더 초기값 동기화 ──
+document.querySelectorAll('input[type=range]').forEach(el => {
+  const valId = el.id + 'Val';
+  if (document.getElementById(valId)) syncVal(el, valId);
+});
+
+// ── 초기 생성 ──
+generate();
+</script>
+</body>
+</html>
