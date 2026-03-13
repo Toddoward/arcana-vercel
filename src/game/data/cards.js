@@ -15,7 +15,7 @@
 //   - 클래스별 추천 빌드 메타 정보 제공 (UI 가이드용)
 // ============================================================
 
-import { getCardForItem, getCardsForSlot, EFFECT_TYPE, EQUIP_SLOT } from '../deck/CardEffect.js';
+import { getCardForItem, getCardsForSlot, EFFECT_TYPE, EQUIP_SLOT } from '../battle/CardEffect.js';
 import { ALL_ITEMS, STARTER_EQUIPMENT } from './items.js';
 // 주의: cards.js ↔ items.js 순환 참조 없음 (items.js는 cards.js를 import하지 않음)
 

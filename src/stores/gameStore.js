@@ -43,6 +43,7 @@ const initialState = {
 
   // ── 전투 상태 ─────────────────────────────
   inBattle:        false,
+  pendingReturnTo: null,    // 전투 후 복귀할 씬 키
   battleEnemies:   [],     // 현재 전투 적 목록
   battleLog:       [],     // 전투 로그 (최근 20개 유지)
 
@@ -88,15 +89,21 @@ export const useGameStore = create((set, get) => ({
     isGameOver:      true,
     gameOverReason:  reason,
     inBattle:        false,
+    pendingReturnTo: null,
     inDungeon:       false,
   }),
 
   resetGame: () => set(initialState),
 
   // ── 퀘스트 마일스톤 ───────────────────────
-  advanceQuestStage: () => set((state) => ({
-    questStage: Math.min(state.questStage + 1, 4),
-  })),
+  // questId 지정 시 questProgress[questId] = COMPLETED 도 업데이트
+  advanceQuestStage: (questId) => set((state) => {
+    const nextStage = Math.min(state.questStage + 1, 4);
+    const questProgress = questId
+      ? { ...state.questProgress, [questId]: 'COMPLETED' }
+      : state.questProgress;
+    return { questStage: nextStage, questProgress };
+  }),
 
   addArtifact: (artifactId) => set((state) => {
     const next = [...new Set([...state.artifactsFound, artifactId])];
@@ -174,6 +181,9 @@ export const useGameStore = create((set, get) => ({
     inBattle:      false,
     battleEnemies: [],
   }),
+
+  setPendingReturnTo: (key) => set({ pendingReturnTo: key }),
+  clearPendingReturnTo: ()  => set({ pendingReturnTo: null }),
 
   updateBattleEnemy: (id, patch) => set((state) => ({
     battleEnemies: state.battleEnemies.map((e) =>

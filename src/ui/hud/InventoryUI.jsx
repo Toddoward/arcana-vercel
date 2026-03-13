@@ -66,7 +66,7 @@ function GridCell({ item, isOccupied, onClick }) {
 }
 
 // ── 메인 컴포넌트 ──────────────────────────────────────────────
-export default function InventoryUI({ playerId, inBattle = false, onClose }) {
+export function InventoryUI({ playerId, inBattle = false, onClose }) {
   const player = usePlayerStore((s) => s.players.find((p) => p.id === playerId));
   const [selectedItem, setSelectedItem] = useState(null);
   const [tooltip,      setTooltip]      = useState(null);

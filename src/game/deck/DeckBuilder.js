@@ -16,7 +16,7 @@ import {
   getCardById,
   isPassiveCard,
   EQUIP_SLOT,
-} from './CardEffect.js';
+} from '../battle/CardEffect.js';
 import { usePlayerStore } from '../../stores/playerStore.js';
 import { HAND } from '../../constants/constants.js';
 

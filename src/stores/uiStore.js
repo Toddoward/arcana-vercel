@@ -110,15 +110,17 @@ export const useUiStore = create((set, get) => ({
   // ── 로비 / 캐릭터 선택 ────────────────────
   lobbyCode:        '',
   lobbyPlayers:     [],
+  pendingNickname:  '',   // 메인메뉴에서 입력한 닉네임 → 로비 초기값
   // [{ id, name, classType, isReady, isHost }]
 
   setLobbyCode: (code) => set({ lobbyCode: code }),
+  setPendingNickname: (name) => set({ pendingNickname: name }),
 
   setLobbyPlayers: (players) => set({ lobbyPlayers: players }),
 
-  updateLobbyPlayer: (id, patch) => set((state) => ({
+  updateLobbyPlayer: (peerId, patch) => set((state) => ({
     lobbyPlayers: state.lobbyPlayers.map((p) =>
-      p.id !== id ? p : { ...p, ...patch }
+      p.peerId !== peerId ? p : { ...p, ...patch }
     ),
   })),
 

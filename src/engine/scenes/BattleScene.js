@@ -152,26 +152,29 @@ export class BattleScene extends BaseScene {
   // ================================================================
   _processTurn() {
     if (!this._combatEngine) return;
-    const engine = this._combatEngine;
-    const unit   = engine.currentUnit();
-    if (!unit) return;
+    const engine  = this._combatEngine;
+    const unitId  = engine.currentUnit();   // 문자열 id 또는 null
+    if (!unitId) return;
 
-    if (unit.isPlayer) {
+    // 플레이어 id인지 여부 — playerStore로 판별
+    const ps       = usePlayerStore.getState();
+    const unitIsPlayer = ps.players.some((p) => p.id === unitId && p.hp > 0);
+
+    if (unitIsPlayer) {
       // GDD §13: 플레이어 턴 — 자동 드로우 1장 + HandUI 활성화
       if (useGameStore.getState().isHost) {
-        const ps = usePlayerStore.getState();
-        const player = ps.players.find((p) => p.id === unit.id);
+        const player = ps.players.find((p) => p.id === unitId);
         if (player) {
           const newState = DeckBuilder.draw(player, 1);
           ps.setDeckState(player.id, newState);
         }
       }
       // 내 턴이면 HandUI 활성화 (uiStore 플래그)
-      const isMyTurn = unit.id === this._myPlayerId;
-      useUiStore.getState().setMyTurn?.(isMyTurn, unit.id);
+      const isMyTurn = unitId === this._myPlayerId;
+      useUiStore.getState().setMyTurn?.(isMyTurn, unitId);
 
       // 카메라 행동자 등 뒤로 (GDD §3.2)
-      this.moveCameraToPlayer(unit.id);
+      this.moveCameraToPlayer(unitId);
     } else {
       // GDD §13: 적 턴 — 자동 처리
       useUiStore.getState().setMyTurn?.(false, null);
@@ -192,19 +195,25 @@ export class BattleScene extends BaseScene {
   // ================================================================
   useCard(instanceId, targetId) {
     if (!this._combatEngine) return;
-    const engine = this._combatEngine;
-    const unit   = engine.currentUnit();
-    if (!unit?.isPlayer || unit.id !== this._myPlayerId) return;
+    const engine   = this._combatEngine;
+    const unitId   = engine.currentUnit();          // 문자열 id
+    if (!unitId || unitId !== this._myPlayerId) return;
 
-    const result = engine.useCard(unit.id, instanceId, targetId);
+    // instanceId → 카드 객체 변환 (playerStore.hand에서 탐색)
+    const ps     = usePlayerStore.getState();
+    const player = ps.players.find((p) => p.id === unitId);
+    const card   = player?.hand?.find((c) => c.instanceId === instanceId);
+    if (!card) return;
+
+    const result = engine.useCard(unitId, card, targetId);
     if (!result?.ok) return;
 
     useGameStore.getState().addBattleLog?.(result.log ?? '카드를 사용했습니다.');
     this._syncManager?.broadcastSnapshot();
 
     // AP 소모 후 잔여 AP가 없으면 자동 턴 종료
-    const player = usePlayerStore.getState().players.find((p) => p.id === unit.id);
-    if ((player?.currentAP ?? 0) <= 0) {
+    const refreshed = usePlayerStore.getState().players.find((p) => p.id === unitId);
+    if ((refreshed?.currentAP ?? 0) <= 0) {
       this.endPlayerTurn();
     }
   }
@@ -287,7 +296,7 @@ export class BattleScene extends BaseScene {
 
     // ResultScreen 닫힘(onContinue) 후 복귀 씬으로 전환
     // App.jsx의 onContinue 핸들러에서 sceneManager.switchTo(returnTo) 호출
-    useGameStore.getState()._pendingReturnTo = this._returnTo;
+    useGameStore.getState().setPendingReturnTo?.(this._returnTo);
   }
 
   _onBattleLose() {
@@ -337,7 +346,7 @@ export class BattleScene extends BaseScene {
     Object.values(this._allyMeshes).forEach((m) => this.scene.remove(m));
     this._allyMeshes = {};
     allies.forEach((player, i) => {
-      const group = assetManager.createCharacterMesh(COLOR[player.className] ?? 0xc9a84c);
+      const group = assetManager.createCharacterMesh(COLOR[player.classType] ?? 0xc9a84c);
       const posZ  = POSITION_Z[player.position] ?? POSITION_Z[POSITION.FRONT];
       group.position.set(ALLY_X_SLOTS[i] ?? 0, 0, posZ);
       group.userData = { playerId: player.id };
@@ -415,6 +424,61 @@ export class BattleScene extends BaseScene {
     Object.values(this._enemyMeshes).forEach((mesh) => {
       if (mesh.userData.type === 'MAGIC') mesh.position.y = 0.5 + Math.sin(t) * 0.15;
     });
+  }
+
+  // ================================================================
+  // 플레이어 도망 (GDD §17)
+  // ================================================================
+  flee(playerId) {
+    if (!this._combatEngine) return { ok: false };
+    const result = this._combatEngine.playerFlee(playerId);
+
+    if (result.fled) {
+      const returnTo = useGameStore.getState().pendingReturnTo ?? 'worldmap';
+      useGameStore.getState().clearPendingReturnTo?.();
+      useUiStore.getState().showResult({ result: 'FLEE', reason: '도망에 성공했습니다.' });
+      this.sceneManager.switchTo(returnTo);
+    } else {
+      useUiStore.getState().showToast?.('도망 실패 — 턴이 소비되었습니다.', 'warn');
+      this._checkBattleEnd();
+      if (!this._battleEnded) this._processTurn();
+    }
+
+    return result;
+  }
+
+  // ================================================================
+  // 전투 중 장비 교체 (GDD §9.4, AP 1 소모)
+  // ================================================================
+  changeEquipment(playerId, oldItem, newItem) {
+    if (!this._combatEngine) return { ok: false };
+    if (this._combatEngine.currentUnit() !== playerId)
+      return { ok: false, reason: 'NOT_YOUR_TURN' };
+
+    const ps     = usePlayerStore.getState();
+    const player = ps.getPlayer(playerId);
+    if (!player) return { ok: false, reason: 'PLAYER_NOT_FOUND' };
+    if ((player.currentAP ?? 0) < 1) return { ok: false, reason: 'NOT_ENOUGH_AP' };
+
+    // AP 1 소모
+    ps.spendAP(playerId, 1);
+
+    // 덱 교체 (GDD §9.4)
+    const deckState = {
+      deck:    player.deck,
+      hand:    player.hand,
+      discard: player.discard,
+      field:   player.field,
+    };
+    const newDeckState = DeckBuilder.equipSwap(deckState, oldItem, newItem);
+    ps.setDeckState(playerId, newDeckState);
+
+    // 장비 슬롯 갱신
+    if (oldItem?.slot) ps.unequipItem(playerId, oldItem.slot);
+    if (newItem?.slot) ps.equipItem(playerId, newItem.slot, newItem);
+
+    useUiStore.getState().showToast?.(`장비 교체: ${newItem?.name ?? ''}`, 'info');
+    return { ok: true, drawCount: newDeckState.drawCount };
   }
 
   dispose() { this.onExit(); super.dispose(); }

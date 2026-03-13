@@ -15,7 +15,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import CardUI, { CARD_W, CARD_H } from './CardUI.jsx';
-import { getCardById, CARD_CATEGORY } from '../../game/deck/CardEffect.js';
+import { getCardById, CARD_CATEGORY } from '../../game/battle/CardEffect.js';
 import { usePlayerStore } from '../../stores/playerStore.js';
 
 // ── 부채꼴 레이아웃 계산 (GDD §4.5) ──────────────────────────
@@ -62,7 +62,7 @@ function needsTarget(cardDef) {
 //   onRegisterPassive — (instanceId) => void
 //   targets    — [{ id, label, position }]  유효 타겟 목록 (적/아군)
 // ================================================================
-export default function HandUI({ playerId, isMyTurn, onUseCard, onRegisterPassive, targets = [] }) {
+export function HandUI({ playerId, isMyTurn, onUseCard, onRegisterPassive, targets = [] }) {
   const hand      = usePlayerStore((s) => s.players.find((p) => p.id === playerId)?.hand ?? []);
   const currentAP = usePlayerStore((s) => s.players.find((p) => p.id === playerId)?.currentAP ?? 0);
 

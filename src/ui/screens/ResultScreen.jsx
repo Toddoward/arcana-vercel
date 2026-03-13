@@ -21,7 +21,7 @@ import { Button } from '../common/Modal.jsx';
 //   onRetry    — () => void  (재시작, GAME_OVER 시)
 //   onMainMenu — () => void
 // ================================================================
-export default function ResultScreen({ result, rewards, reason, onContinue, onRetry, onMainMenu }) {
+export function ResultScreen({ result, rewards, reason, onContinue, onRetry, onMainMenu }) {
   const isWin      = result === 'WIN';
   const isGameOver = result === 'GAME_OVER';
 

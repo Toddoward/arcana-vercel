@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { Button }   from '../common/Modal.jsx';
 
-export default function MainMenuScreen({ onNewGame, onJoinGame, onContinue, onSettings }) {
+export function MainMenuScreen({ onNewGame, onJoinGame, onContinue, onSettings }) {
   const [nickname,   setNickname]   = useState('');
   const [joinInput,  setJoinInput]  = useState('');
   const [showJoin,   setShowJoin]   = useState(false);
@@ -36,22 +36,24 @@ export default function MainMenuScreen({ onNewGame, onJoinGame, onContinue, onSe
       color:           '#c0c8d0',
       userSelect:      'none',
     }}>
-      {/* 타이틀 */}
+      {/* 타이틀 이미지 */}
+      <img
+        src="/assets/images/title.png"
+        alt="ARCANA"
+        style={{
+          width:        420,
+          maxWidth:     '90vw',
+          marginBottom: 8,
+          filter:       'drop-shadow(0 0 18px #a060ff88)',
+          userSelect:   'none',
+          draggable:    false,
+        }}
+      />
       <div style={{
-        fontSize:      38,
-        color:         '#c8a040',
-        fontWeight:    700,
-        letterSpacing: 4,
-        marginBottom:  6,
-        textShadow:    '0 0 24px #c8a04066',
-      }}>
-        ARCANA
-      </div>
-      <div style={{
-        fontSize:      12,
+        fontSize:      11,
         color:         '#607080',
         letterSpacing: 6,
-        marginBottom:  48,
+        marginBottom:  44,
         fontFamily:    "'Cinzel', serif",
       }}>
         DECK · QUEST · SURVIVE

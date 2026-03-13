@@ -19,7 +19,7 @@
 //   → ONE_SHOT: 발동 즉시 discard / PERSISTENT: duration 감소
 // ============================================================
 
-import { getCardById, isOneShotPassive, EFFECT_TYPE } from './CardEffect.js';
+import { getCardById, isOneShotPassive, EFFECT_TYPE } from '../battle/CardEffect.js';
 import { TokenRoll } from '../battle/TokenRoll.js';
 import { usePlayerStore } from '../../stores/playerStore.js';
 import { STATUS } from '../../constants/constants.js';

@@ -146,7 +146,7 @@ function PlayerPanel({ player, isActive }) {
 }
 
 // ── 파티 현황 패널 (좌측 HUD) ─────────────────────────────────
-export default function HPBar({ activePlayerId = null }) {
+export function HPBar({ activePlayerId = null }) {
   const players = usePlayerStore((s) => s.players);
 
   if (!players.length) return null;

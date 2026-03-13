@@ -29,7 +29,7 @@
 // }
 // ============================================================
 
-import { EQUIP_SLOT, EFFECT_TYPE } from '../deck/CardEffect.js';
+import { EQUIP_SLOT, EFFECT_TYPE } from '../battle/CardEffect.js';
 import { ELEMENT, STATUS } from '../../constants/constants.js';
 
 // ── 아이템 점유 크기 (GDD §7.2) ─────────────────────────────

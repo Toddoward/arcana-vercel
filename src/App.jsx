@@ -38,16 +38,23 @@ import { TokenRollUI } from './ui/hud/TokenRollUI.jsx';
 import { InventoryUI } from './ui/hud/InventoryUI.jsx';
 
 // ── 공통 모달 ──────────────────────────────────────────────
-import { Modal, Button } from './ui/common/Modal.jsx';
+import { Modal, Button }          from './ui/common/Modal.jsx';
+import { CharacterSelectScreen }  from './ui/screens/CharacterSelectScreen.jsx';
+import { ShopUI }                 from './ui/common/ShopUI.jsx';
+import { CharacterStatUI }        from './ui/common/CharacterStatUI.jsx';
+import { QuestUI }                from './ui/common/QuestUI.jsx';
+import { RandomEventModal }       from './ui/common/RandomEventModal.jsx';
+import { QuestInteractionModal }  from './ui/common/QuestInteractionModal.jsx';
 
 // ── 씬 상수 ───────────────────────────────────────────────
 const SCENE = {
-  MAIN_MENU: 'MAIN_MENU',
-  LOBBY:     'LOBBY',
-  WORLD_MAP: 'WORLD_MAP',
-  BATTLE:    'BATTLE',
-  DUNGEON:   'DUNGEON',
-  RESULT:    'RESULT',
+  MAIN_MENU:        'MAIN_MENU',
+  LOBBY:            'LOBBY',
+  CHARACTER_SELECT: 'CHARACTER_SELECT',
+  WORLD_MAP:        'WORLD_MAP',
+  BATTLE:           'BATTLE',
+  DUNGEON:          'DUNGEON',
+  RESULT:           'RESULT',
 };
 
 // ============================================================
@@ -56,13 +63,22 @@ export default function App({ sceneManager }) {
   const currentScene = useUiStore((s) => s.currentScene);
 
   // ── 전투/UI 상태 구독 ───────────────────────────────────
-  const isMyTurn      = useUiStore((s) => s.isMyTurn);
+  const isMyTurn         = useUiStore((s) => s.isMyTurn);
+  const lobbyPlayers     = useUiStore((s) => s.lobbyPlayers);
+  const pendingNickname  = useUiStore((s) => s.pendingNickname);
+  const myTurnPlayerId   = useUiStore((s) => s.myTurnPlayerId);
+  const localPlayerId    = usePlayerStore((s) => s.localPlayerId);
   const isRolling     = useUiStore((s) => s.isRolling);
   const resultPayload = useUiStore((s) => s.resultPayload);
   const gameOverReason= useUiStore((s) => s.gameOverReason);
   const showingRevive = useUiStore((s) => s.showingRevivePrompt);
-  const inventoryOpen = useUiStore((s) => s.inventoryOpen);
-  const toasts        = useUiStore((s) => s.toasts);
+  const inventoryOpen        = useUiStore((s) => s.inventoryOpen);
+  const villagePayload       = useUiStore((s) => s.villagePayload);
+  const characterOpen        = useUiStore((s) => s.characterOpen);
+  const questOpen            = useUiStore((s) => s.questOpen);
+  const randomEventPayload   = useUiStore((s) => s.randomEventPayload);
+  const questInteractionPayload = useUiStore((s) => s.questInteractionPayload);
+  const toasts               = useUiStore((s) => s.toasts);
 
   // ── 네트워크 인스턴스 (앱 전체 싱글턴) ─────────────────
   const peerRef = useRef(null);
@@ -86,10 +102,11 @@ export default function App({ sceneManager }) {
   const goTo = (key, payload) => sceneManager.goTo(key.toLowerCase().replace('_', ''), payload);
 
   // ── 전투 종료 후 복귀 ───────────────────────────────────
-  const handleContinue = () => {
-    useUiStore.getState().clearResult();
-    const returnTo = useGameStore.getState()._pendingReturnTo ?? 'worldmap';
-    useGameStore.getState()._pendingReturnTo = null;
+  const handleContinue = ({ nickname } = {}) => {
+    if (nickname?.trim()) useUiStore.getState().setPendingNickname?.(nickname.trim());
+    useUiStore.getState().clearResult?.();
+    const returnTo = useGameStore.getState().pendingReturnTo ?? 'worldmap';
+    useGameStore.getState().clearPendingReturnTo?.();
     sceneManager.goTo(returnTo);
   };
 
@@ -132,12 +149,29 @@ export default function App({ sceneManager }) {
       {currentScene === SCENE.MAIN_MENU && (
         <FullScreen>
           <MainMenuScreen
-            onNewGame={(lobbyCode) => sceneManager.goTo('worldmap', { newGame: true })}
-            onJoinGame={(code) => {
-              useUiStore.getState().setLobbyCode(code);
-              sceneManager.goTo('mainmenu'); // 로비는 같은 씬에서 UI 전환
+            onNewGame={({ nickname } = {}) => {
+              const name = nickname?.trim() || '모험가';
+              useUiStore.getState().setPendingNickname?.(name);
+              useUiStore.getState().setLobbyPlayers([{
+                peerId: peerRef.current?.id ?? 'host',
+                playerName: name,
+                ready: false,
+                isHost: true,
+              }]);
+              useUiStore.getState().goToScene(SCENE.LOBBY);
             }}
-            onLobbyEnter={() => useUiStore.getState().goToScene(SCENE.LOBBY)}
+            onJoinGame={({ nickname, code } = {}) => {
+              const name = nickname?.trim() || '모험가';
+              useUiStore.getState().setPendingNickname?.(name);
+              useUiStore.getState().setLobbyCode?.(code ?? '');
+              useUiStore.getState().setLobbyPlayers([{
+                peerId: peerRef.current?.id ?? 'host',
+                playerName: name,
+                ready: false,
+                isHost: true,
+              }]);
+              useUiStore.getState().goToScene(SCENE.LOBBY);
+            }}
           />
         </FullScreen>
       )}
@@ -145,10 +179,50 @@ export default function App({ sceneManager }) {
       {currentScene === SCENE.LOBBY && (
         <FullScreen>
           <LobbyScreen
-            sceneManager={sceneManager}
-            peerManager={peerRef.current}
-            hostManager={hostRef.current}
-            onGameStart={() => sceneManager.goTo('worldmap', { newGame: true })}
+            mode="new"
+            joinCode={useUiStore.getState().lobbyCode || null}
+            lobbyList={lobbyPlayers}
+            myPeerId={peerRef.current?.id ?? 'host'}
+            isHost={true}
+            initialNickname={pendingNickname}
+            onReady={(charData) => {
+              if (!charData) {
+                // 준비 취소 — 자신 슬롯을 ready:false로 되돌림
+                const pid = peerRef.current?.id ?? 'host';
+                useUiStore.getState().updateLobbyPlayer(pid, { ready: false, classType: null, finalStats: null });
+                return;
+              }
+              // 1. 플레이어 초기화
+              usePlayerStore.getState().initPlayers([charData]);
+              // 2. lobbyPlayers 슬롯 갱신 (ready:true + finalStats 저장)
+              const pid = peerRef.current?.id ?? 'host';
+              useUiStore.getState().updateLobbyPlayer(pid, {
+                playerName: charData.name,
+                classType:  charData.classType,
+                finalStats: charData.finalStats ?? {},
+                ready:      true,
+              });
+            }}
+            onStartGame={() => sceneManager.goTo('worldmap', { newGame: true })}
+            onLeave={() => {
+              useUiStore.getState().setLobbyPlayers([]);
+              useUiStore.getState().goToScene(SCENE.MAIN_MENU);
+            }}
+          />
+        </FullScreen>
+      )}
+
+      {/* ── G-1: 캐릭터 선택 (GDD §4.3) ────────────────── */}
+      {currentScene === SCENE.CHARACTER_SELECT && (
+        <FullScreen>
+          <CharacterSelectScreen
+            playerId={peerRef.current?.id ?? 'p1'}
+            takenChars={usePlayerStore.getState().players.map((p) => p.name)}
+            onConfirm={(charData) => {
+              usePlayerStore.getState().initPlayers([charData]);
+              sceneManager.goTo('worldmap', { newGame: true });
+            }}
+            onCancel={() => useUiStore.getState().goToScene(SCENE.LOBBY)}
           />
         </FullScreen>
       )}
@@ -160,7 +234,32 @@ export default function App({ sceneManager }) {
           <WorldHUD onEndTurn={handleEndWorldTurn} />
           {inventoryOpen && (
             <HUDOverlay>
-              <InventoryUI onClose={() => useUiStore.getState().closeInventory()} />
+              <InventoryUI playerId={localPlayerId} onClose={() => useUiStore.getState().closeInventory()} />
+            </HUDOverlay>
+          )}
+          {/* G-2: 마을 ShopUI (GDD §21) */}
+          {villagePayload && (
+            <HUDOverlay>
+              <ShopUI
+                village={villagePayload}
+                onClose={() => useUiStore.getState().closeVillage?.()}
+              />
+            </HUDOverlay>
+          )}
+          {/* G-3: 캐릭터 정보 패널 (GDD §6) */}
+          {characterOpen && (
+            <HUDOverlay>
+              <CharacterStatUI
+                onClose={() => useUiStore.getState().closeCharacter?.()}
+              />
+            </HUDOverlay>
+          )}
+          {/* G-4: 퀘스트 패널 (GDD §25) */}
+          {questOpen && (
+            <HUDOverlay>
+              <QuestUI
+                onClose={() => useUiStore.getState().closeQuest?.()}
+              />
             </HUDOverlay>
           )}
         </>
@@ -172,6 +271,8 @@ export default function App({ sceneManager }) {
           <HPBar />
           {isMyTurn && (
             <HandUI
+              playerId={myTurnPlayerId ?? localPlayerId}
+              isMyTurn={isMyTurn}
               onUseCard={handleUseCard}
               onRegisterPassive={handleRegisterPassive}
               onEndTurn={handleEndTurn}
@@ -180,7 +281,7 @@ export default function App({ sceneManager }) {
           {isRolling && <TokenRollUI />}
           {inventoryOpen && (
             <HUDOverlay>
-              <InventoryUI onClose={() => useUiStore.getState().closeInventory()} />
+              <InventoryUI playerId={localPlayerId} onClose={() => useUiStore.getState().closeInventory()} />
             </HUDOverlay>
           )}
         </>
@@ -192,7 +293,7 @@ export default function App({ sceneManager }) {
           <HPBar />
           {inventoryOpen && (
             <HUDOverlay>
-              <InventoryUI onClose={() => useUiStore.getState().closeInventory()} />
+              <InventoryUI playerId={localPlayerId} onClose={() => useUiStore.getState().closeInventory()} />
             </HUDOverlay>
           )}
         </>
@@ -206,7 +307,7 @@ export default function App({ sceneManager }) {
             rewards={resultPayload.rewards}
             reason={resultPayload.reason}
             onContinue={handleContinue}
-            onRestart={handleGameRestart}
+            onRetry={handleGameRestart}
             onMainMenu={handleGameRestart}
           />
         </FullScreen>
@@ -241,6 +342,26 @@ export default function App({ sceneManager }) {
               }}>포기</Button>
             </div>
           </Modal>
+        </FullScreen>
+      )}
+
+      {/* ── G-5: 랜덤 이벤트 모달 — 씬 무관 (GDD §18.6) ── */}
+      {randomEventPayload && (
+        <FullScreen style={{ background: 'rgba(0,0,0,0.7)' }}>
+          <RandomEventModal
+            event={randomEventPayload}
+            onClose={() => useUiStore.getState().clearRandomEvent?.()}
+          />
+        </FullScreen>
+      )}
+
+      {/* ── G-6: 퀘스트 상호작용 모달 — 씬 무관 (GDD §25) ─ */}
+      {questInteractionPayload && (
+        <FullScreen style={{ background: 'rgba(0,0,0,0.7)' }}>
+          <QuestInteractionModal
+            quest={questInteractionPayload}
+            onClose={() => useUiStore.getState().clearQuestInteraction?.()}
+          />
         </FullScreen>
       )}
 

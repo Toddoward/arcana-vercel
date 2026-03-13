@@ -21,7 +21,7 @@ function threatColor(threat) {
   return '#4080c0';                     // 안전
 }
 
-export default function WorldHUD({ onEndTurn, onSave }) {
+export function WorldHUD({ onEndTurn, onSave }) {
   const worldTurn    = useGameStore((s) => s.worldTurn);
   const dragonPos    = useGameStore((s) => s.dragonPos);
   const dragonThreat = useGameStore((s) => s.dragonThreat ?? 0);

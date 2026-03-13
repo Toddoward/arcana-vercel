@@ -13,6 +13,7 @@
 import { Initiative }    from './Initiative.js';
 import { TokenRoll }     from './TokenRoll.js';
 import { CombatEnemyAI, ENEMY_ACTION } from './EnemyAI.js';
+import { BossAI }               from './BossAI.js';
 import { useGameStore }  from '../../stores/gameStore.js';
 import { usePlayerStore } from '../../stores/playerStore.js';
 
@@ -72,7 +73,7 @@ export class CombatEngine {
     const units = [
       ...playerStore.players.map((p) => ({
         id:       p.id,
-        dex:      p.stats.dex,
+        dex:      p.stats?.DEX ?? p.stats?.dex ?? 5,  // 대/소문자 모두 허용
         isPlayer: true,
       })),
       ...this._enemies.map((e) => ({
@@ -128,6 +129,29 @@ export class CombatEngine {
     const player      = playerStore.getPlayer(playerId);
     if (!player) return { ok: false, reason: 'PLAYER_NOT_FOUND' };
 
+    // ── GDD §14.1 행동 제한 상태이상 체크 ─────────────────────
+    const statuses = player.statusEffects ?? [];
+    const isBlocked = statuses.some((s) => s.type === 'FREEZE' || s.type === 'STUN');
+    if (isBlocked) {
+      this._pushLog(`❄️ ${player.name} 행동 불가 (빙결/기절)`);
+      return { ok: false, reason: 'CANNOT_ACT' };
+    }
+
+    // ── GDD §14.1 착란(CONFUSION) → 랜덤 행동 ─────────────────
+    const isConfused = statuses.some((s) => s.type === 'CONFUSION');
+    if (isConfused && player.hand?.length > 0) {
+      const randCard   = player.hand[Math.floor(Math.random() * player.hand.length)];
+      const allTargets = [
+        ...this._enemies.filter((e) => e.hp > 0).map((e) => e.id),
+        ...playerStore.players.filter((p) => p.hp > 0).map((p) => p.id),
+      ];
+      const randTarget = allTargets[Math.floor(Math.random() * allTargets.length)] ?? null;
+      playerStore.spendAP(playerId, randCard.apCost ?? 1);
+      const result = this._applyCardEffect(player, randCard, randTarget);
+      this._pushLog(`🌀 ${player.name} 착란 — 랜덤 행동 (${randCard.effectType})`);
+      return { ok: true, auto: true, result };
+    }
+
     // AP 확인
     if (player.currentAP < card.apCost) return { ok: false, reason: 'NOT_ENOUGH_AP' };
 
@@ -174,7 +198,7 @@ export class CombatEngine {
       id:            p.id,
       hp:            p.hp,
       maxHp:         p.maxHp,
-      dex:           p.stats.dex,
+      dex:           p.stats?.DEX ?? p.stats?.dex ?? 5,
       statusEffects: p.statusEffects ?? [],
     }));
 
@@ -260,9 +284,17 @@ export class CombatEngine {
         return { fled, roll: fleeRoll };
       }
 
-      case ENEMY_ACTION.SPECIAL:
-        // 특수 행동: 보스별 구체 구현은 BossAI에서 override
-        return { special: true };
+      case ENEMY_ACTION.SPECIAL: {
+        // GDD §26/27: 보스별 특수 행동 — BossAI에 위임
+        const bossCtx = {
+          enemies:     this._enemies,
+          addEnemy:    (e) => { this._enemies.push(e); this._initiative?.addUnit(e.id, e.dex ?? 5); },
+          pushLog:     (msg) => this._pushLog(msg),
+          playerStore: usePlayerStore.getState(),
+        };
+        if (BossAI.tryLichRevive(enemy, bossCtx)) return { action: 'REVIVE' };
+        return BossAI.executeSpecial(enemy, bossCtx, this);
+      }
 
       default:
         break;
@@ -275,7 +307,7 @@ export class CombatEngine {
   // ================================================================
   _applyCardEffect(player, card, targetId) {
     const { effectType, stat: statKey, element, tier } = card;
-    const statValue = player.stats[statKey?.toLowerCase()] ?? 5;
+    const statValue = player.stats[statKey?.toUpperCase()] ?? player.stats[statKey] ?? 5;
     const tierBonus = TIER_BONUS[tier] ?? 0;
 
     // 타겟 목록 결정
@@ -349,7 +381,7 @@ export class CombatEngine {
         break;
       case 'HASTE':
         playerStore.applyBuff(targetId, { dex: Math.round(successRatio * 2) }, 1);
-        this._initiative?.updateDex(targetId, player.stats.dex + Math.round(successRatio * 2));
+        this._initiative?.updateDex(targetId, (player.stats?.DEX ?? player.stats?.dex ?? 5) + Math.round(successRatio * 2));
         break;
       case 'REGEN':
         playerStore.applyStatus(targetId, 'REGEN', STATUS_DURATION_DEFAULT);
@@ -528,11 +560,47 @@ export class CombatEngine {
     // GDD 13.1: 다음 유닛이 플레이어면 턴 시작 처리 (AP 복원 + 자동 1장 드로우)
     const nextId = this.currentUnit();
     if (nextId) {
-      const ps       = usePlayerStore.getState();
-      const isPlayer = ps.players.some((p) => p.id === nextId && p.hp > 0);
-      if (isPlayer) {
-        ps.resetAP(nextId);   // AP = DEX 값으로 복원
-        ps.drawCards(nextId, 1); // 자동 1장 드로우
+      const ps    = usePlayerStore.getState();
+      const nextP = ps.players.find((p) => p.id === nextId && p.hp > 0);
+      if (nextP) {
+        // GDD §14.1: FREEZE/STUN → 행동 불가, 자동 턴 스킵
+        const blocked = (nextP.statusEffects ?? []).some(
+          (s) => s.type === 'FREEZE' || s.type === 'STUN'
+        );
+        if (blocked) {
+          this._pushLog(`❄️ ${nextP.name} 행동 불가 — 턴 자동 스킵`);
+          this._turnQueue.shift();       // 현재 유닛 제거
+          this._proceedQueue();          // 다음 유닛 처리 (재귀 대신 별도 메서드)
+        } else {
+          ps.resetAP(nextId);
+          ps.drawCards(nextId, 1);
+        }
+      }
+    }
+  }
+
+  // FREEZE/STUN 스킵 후 큐 계속 진행 (무한루프 방지용 분리)
+  _proceedQueue() {
+    if (this._turnQueue.length === 0) {
+      this._tickStatusEffects();
+      this._cycle++;
+      this._refillQueue();
+    }
+    const nextId = this.currentUnit();
+    if (!nextId) return;
+    const ps    = usePlayerStore.getState();
+    const nextP = ps.players.find((p) => p.id === nextId && p.hp > 0);
+    if (nextP) {
+      const blocked = (nextP.statusEffects ?? []).some(
+        (s) => s.type === 'FREEZE' || s.type === 'STUN'
+      );
+      if (blocked) {
+        this._pushLog(`❄️ ${nextP.name} 행동 불가 — 턴 자동 스킵`);
+        this._turnQueue.shift();
+        this._proceedQueue();
+      } else {
+        ps.resetAP(nextId);
+        ps.drawCards(nextId, 1);
       }
     }
   }
@@ -551,8 +619,51 @@ export class CombatEngine {
   }
 
   // ================================================================
+  // 플레이어 도망 (GDD §17)
+  // ================================================================
+  playerFlee(playerId) {
+    if (!this._started) return { ok: false, reason: 'NOT_STARTED' };
+    if (this.currentUnit() !== playerId) return { ok: false, reason: 'NOT_YOUR_TURN' };
+
+    const ps     = usePlayerStore.getState();
+    const player = ps.getPlayer(playerId);
+    if (!player) return { ok: false, reason: 'PLAYER_NOT_FOUND' };
+
+    // GDD §17: DEX 기반 TokenRoll, successes > 0 이면 성공
+    const roll = TokenRoll.roll({ stat: player.stats?.DEX ?? player.stats?.dex ?? 5 });
+    const fled = roll.successes > 0;
+
+    if (fled) {
+      this._pushLog(`💨 ${player.name} 도망 성공!`);
+      // Initiative에서 해당 플레이어 제거
+      this._initiative?.removeUnit(playerId);
+      this._turnQueue = this._turnQueue.filter((id) => id !== playerId);
+      // 전투 종료 (도망)
+      this._started = false;
+      useGameStore.getState().exitBattle();
+    } else {
+      this._pushLog(`⚠️ ${player.name} 도망 실패 — 턴 소비`);
+      // 실패 시 턴만 소비
+      this._advanceTurn();
+    }
+
+    return { ok: true, fled, roll };
+  }
+
+  // ================================================================
   // 승패 판정
   // ================================================================
+  // ── public wrapper (BattleScene에서 호출) ──────────────────
+  checkBattleEnd() {
+    const livingEnemies = this._enemies.filter((e) => e.hp > 0);
+    const livingPlayers = usePlayerStore.getState().players.filter((p) => p.hp > 0);
+    if (livingEnemies.length === 0) return 'WIN';
+    if (livingPlayers.length === 0) return 'LOSE';
+    return null;
+  }
+
+  getLog() { return [...this._log]; }
+
   _checkBattleEnd() {
     const livingEnemies = this._enemies.filter((e) => e.hp > 0);
     const livingPlayers = usePlayerStore.getState().players.filter((p) => p.hp > 0);

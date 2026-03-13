@@ -28,7 +28,7 @@ const TOKEN_COUNT = 6;
 //   onConfirm  — (dpSpend: number) => void  굴림 확정
 //   onClose    — () => void
 // ================================================================
-export default function TokenRollUI({
+export function TokenRollUI({
   result      = null,
   stat        = 5,
   attackElem  = null,

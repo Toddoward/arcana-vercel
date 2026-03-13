@@ -119,23 +119,8 @@ export function CharacterSelectScreen({
     onConfirm?.({
       id:        playerId,
       name,
-      className: selectedClass,
-      level:     1,
-      exp:       0,
-      gold:      100,
-      stats:     Object.fromEntries(STAT_KEYS.map((k) => [k.toLowerCase(), finalStats[k]])),
-      maxHp:     previewHP,
-      currentHp: previewHP,
-      currentAP: previewAP,
-      dp:        5,
-      maxDp:     5,
-      inventory: [],
-      equipment: {},
-      statusEffects: [],
-      deck:      [],
-      hand:      [],
-      discard:   [],
-      field:     [],
+      classType: selectedClass,
+      bonusStats,
     });
   };
 

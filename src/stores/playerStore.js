@@ -20,7 +20,7 @@ import {
 // 단일 플레이어 초기 데이터 생성
 function createPlayer(id, classType, playerName) {
   const baseStats = { ...CLASS_BASE_STATS[classType] };
-  const maxHP = calcMaxHP(baseStats.CON);
+  const maxHp = calcMaxHP(baseStats.CON);
 
   return {
     id,
@@ -38,8 +38,8 @@ function createPlayer(id, classType, playerName) {
     freePoints:  CHARACTER_CREATION_FREE_POINTS,
 
     // ── HP ─────────────────────────────────
-    maxHP,
-    currentHP:   maxHP,
+    maxHp,
+    hp:          maxHp,
     isDead:      false,
     isSpectating: false,
 
@@ -48,8 +48,8 @@ function createPlayer(id, classType, playerName) {
     currentAP:   baseStats.DEX,
 
     // ── DP (Deterministic Point) ───────────
-    maxDP:       DP.DEFAULT_MAX,
-    currentDP:   DP.DEFAULT_MAX,
+    maxDp:       DP.DEFAULT_MAX,
+    dp:          DP.DEFAULT_MAX,
 
     // ── 포지션 (전투) ──────────────────────
     position:    CLASS_DEFAULT_POSITION[classType],
@@ -104,10 +104,22 @@ export const usePlayerStore = create((set, get) => ({
 
   // ── 초기화 ────────────────────────────────
   initPlayers: (playerConfigs) => {
-    // playerConfigs: [{ id, classType, name }, ...]
-    const players = playerConfigs.map(({ id, classType, name }) =>
-      createPlayer(id, classType, name)
-    );
+    // playerConfigs: [{ id, classType, name, bonusStats? }, ...]
+    // bonusStats: { STR, DEX, CON, INT, WIS, LUK } — 캐릭터 생성 시 배분 포인트
+    const players = playerConfigs.map(({ id, classType, name, bonusStats }) => {
+      const p = createPlayer(id, classType, name);
+      if (bonusStats) {
+        // 보너스 스탯 적용 + HP/AP 재계산
+        Object.entries(bonusStats).forEach(([k, v]) => {
+          if (p.stats[k] !== undefined) p.stats[k] += (v ?? 0);
+        });
+        const newMaxHp = calcMaxHP(p.stats.CON);
+        p.maxHp    = newMaxHp;
+        p.hp       = newMaxHp;
+        p.currentAP = p.stats.DEX;
+      }
+      return p;
+    });
     set({ players, localPlayerId: playerConfigs[0]?.id ?? null });
   },
 
@@ -126,13 +138,13 @@ export const usePlayerStore = create((set, get) => ({
     players: state.players.map((p) => {
       if (p.id !== playerId || p.freePoints <= 0) return p;
       const newStats = { ...p.stats, [statKey]: p.stats[statKey] + 1 };
-      const maxHP = calcMaxHP(newStats.CON);
+      const maxHp = calcMaxHP(newStats.CON);
       return {
         ...p,
         stats:      newStats,
         freePoints: p.freePoints - 1,
-        maxHP,
-        currentHP:  Math.min(p.currentHP, maxHP),
+        maxHp,
+        hp:         Math.min(p.hp, maxHp),
         currentAP:  newStats.DEX,
       };
     }),
@@ -142,7 +154,7 @@ export const usePlayerStore = create((set, get) => ({
   addExp: (playerId, amount) => set((state) => ({
     players: state.players.map((p) => {
       if (p.id !== playerId) return p;
-      let { exp, level, stats, maxHP, currentHP } = p;
+      let { exp, level, stats, maxHp, hp } = p;
       exp += amount;
 
       // 연속 레벨업 처리
@@ -158,11 +170,11 @@ export const usePlayerStore = create((set, get) => ({
           WIS: stats.WIS + growth.WIS,
           LUK: stats.LUK + growth.LUK,
         };
-        maxHP = calcMaxHP(stats.CON);
-        currentHP = maxHP; // 레벨업 시 HP 전량 회복
+        maxHp = calcMaxHP(stats.CON);
+        hp = maxHp; // 레벨업 시 HP 전량 회복
       }
 
-      return { ...p, exp, level, stats, maxHP, currentHP };
+      return { ...p, exp, level, stats, maxHp, hp };
     }),
   })),
 
@@ -171,7 +183,7 @@ export const usePlayerStore = create((set, get) => ({
     players: state.players.map((p) =>
       p.id !== playerId ? p : {
         ...p,
-        currentHP: Math.min(p.currentHP + amount, p.maxHP),
+        hp: Math.min(p.hp + amount, p.maxHp),
       }
     ),
   })),
@@ -179,17 +191,17 @@ export const usePlayerStore = create((set, get) => ({
   damagePlayer: (playerId, amount) => set((state) => ({
     players: state.players.map((p) => {
       if (p.id !== playerId) return p;
-      const currentHP = Math.max(0, p.currentHP - amount);
-      const isDead = currentHP <= 0;
-      return { ...p, currentHP, isDead };
+      const hp = Math.max(0, p.hp - amount);
+      const isDead = hp <= 0;
+      return { ...p, hp, isDead };
     }),
   })),
 
   revivePlayer: (playerId) => set((state) => ({
     players: state.players.map((p) => {
       if (p.id !== playerId) return p;
-      const currentHP = Math.floor(p.maxHP * 0.30); // 30% HP로 부활
-      return { ...p, currentHP, isDead: false, isSpectating: false };
+      const hp = Math.floor(p.maxHp * 0.30); // 30% HP로 부활
+      return { ...p, hp, isDead: false, isSpectating: false };
     }),
   })),
 
@@ -223,7 +235,7 @@ export const usePlayerStore = create((set, get) => ({
     players: state.players.map((p) =>
       p.id !== playerId ? p : {
         ...p,
-        currentDP: Math.max(0, p.currentDP - amount),
+        dp: Math.max(0, p.dp - amount),
       }
     ),
   })),
@@ -232,15 +244,15 @@ export const usePlayerStore = create((set, get) => ({
     players: state.players.map((p) =>
       p.id !== playerId ? p : {
         ...p,
-        currentDP: Math.min(p.currentDP + amount, p.maxDP),
+        dp: Math.min(p.dp + amount, p.maxDp),
       }
     ),
   })),
 
   upgradeMaxDP: (playerId) => set((state) => ({
     players: state.players.map((p) => {
-      if (p.id !== playerId || p.maxDP >= DP.UPGRADED_MAX) return p;
-      return { ...p, maxDP: p.maxDP + 1, currentDP: p.currentDP + 1 };
+      if (p.id !== playerId || p.maxDp >= DP.UPGRADED_MAX) return p;
+      return { ...p, maxDp: p.maxDp + 1, dp: p.dp + 1 };
     }),
   })),
 
@@ -285,17 +297,6 @@ export const usePlayerStore = create((set, get) => ({
       p.id !== playerId ? p : {
         ...p,
         statusEffects: p.statusEffects.filter((s) => s.type !== statusType),
-      }
-    ),
-  })),
-
-  tickStatusEffects: (playerId) => set((state) => ({
-    players: state.players.map((p) =>
-      p.id !== playerId ? p : {
-        ...p,
-        statusEffects: p.statusEffects
-          .map((s) => ({ ...s, duration: s.duration - 1 }))
-          .filter((s) => s.duration > 0),
       }
     ),
   })),
@@ -416,8 +417,7 @@ export const usePlayerStore = create((set, get) => ({
     players: state.players.map((p) =>
       p.id !== playerId ? p : {
         ...p,
-        maxDp:          Math.min((p.maxDp ?? 5) + 1, 8),
-        inventoryExpanded: (p.inventoryExpanded ?? 0),
+        maxDp: Math.min((p.maxDp ?? DP.DEFAULT_MAX) + 1, DP.UPGRADED_MAX),
       }
     ),
   })),
@@ -451,8 +451,8 @@ export const usePlayerStore = create((set, get) => ({
     players: state.players.map((p) =>
       p.id !== playerId ? p : {
         ...p,
-        currentHp: p.maxHp,
-        dp:        p.maxDp ?? 5,
+        hp:  p.maxHp,
+        dp:  p.maxDp,
       }
     ),
   })),
@@ -576,29 +576,11 @@ export const usePlayerStore = create((set, get) => ({
     return p ? p.deck.slice(0, count) : [];
   },
 
-  // HP 데미지 적용
-  takeDamage: (playerId, amount) => set((state) => ({
-    players: state.players.map((p) =>
-      p.id !== playerId ? p : { ...p, hp: Math.max(0, p.hp - amount) }
-    ),
-  })),
+  // takeDamage → damagePlayer alias (CombatEngine 호환)
+  takeDamage: (playerId, amount) => get().damagePlayer(playerId, amount),
 
-  // 상태이상 적용 (중첩 시 지속 연장)
-  applyStatus: (playerId, statusType, duration) => set((state) => ({
-    players: state.players.map((p) => {
-      if (p.id !== playerId) return p;
-      const existing = p.statusEffects.find((s) => s.type === statusType);
-      if (existing) {
-        return {
-          ...p,
-          statusEffects: p.statusEffects.map((s) =>
-            s.type === statusType ? { ...s, duration: s.duration + duration } : s
-          ),
-        };
-      }
-      return { ...p, statusEffects: [...p.statusEffects, { type: statusType, duration }] };
-    }),
-  })),
+  // applyStatus → addStatus alias (CombatEngine 호환)
+  applyStatus: (playerId, statusType, duration) => get().addStatus(playerId, statusType, duration),
 
   // 임시 스탯 버프 적용 (1주기)
   applyBuff: (playerId, statBuff, durationCycles = 1) => set((state) => ({

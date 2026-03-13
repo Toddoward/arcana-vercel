@@ -9,7 +9,7 @@
 //   constants.js   — ELEMENT
 // ============================================================
 
-import { getCardById, EFFECT_TYPE, CARD_CATEGORY } from '../../game/deck/CardEffect.js';
+import { getCardById, EFFECT_TYPE, CARD_CATEGORY } from '../../game/battle/CardEffect.js';
 
 // ── 카드 분류별 테두리 색 (GDD §4.5) ─────────────────────────
 const BORDER_COLOR = {

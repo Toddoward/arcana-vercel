@@ -49,7 +49,9 @@ export class BaseScene {
 export class SceneManager {
   constructor() {
     this.renderer     = null;
-    this.clock        = new THREE.Clock();
+    // THREE.Clock은 r128 이후 deprecated → 자체 타이머로 대체
+    this._lastTime  = 0;
+    this.clock      = { getDelta: () => 0 };  // 하위 호환 stub
     this.scenes       = {};       // { [SCENE_KEY]: BaseScene 인스턴스 }
     this.currentScene = null;     // 현재 활성 씬
     this.isRunning    = false;
@@ -69,7 +71,8 @@ export class SceneManager {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
-    this.renderer.outputColorSpace   = THREE.SRGBColorSpace;
+    // three r128 호환: outputColorSpace 대신 outputEncoding 사용
+    this.renderer.outputEncoding = THREE.sRGBEncoding;
 
     // 리사이즈 핸들러
     this._resizeHandler = this._onResize.bind(this);
@@ -90,6 +93,16 @@ export class SceneManager {
   // payload: 다음 씬에 전달할 임의 데이터 (선택적)
   // switchTo: goTo의 별칭 (씬 내부에서 this.sceneManager.switchTo() 로 호출)
   switchTo(sceneKey, payload = {}) { return this.goTo(sceneKey, payload); }
+
+  // SceneManager 내부 키('worldmap') → SCENE 상수('WORLD_MAP') 매핑
+  static _SCENE_KEY_MAP = {
+    mainmenu: 'MAIN_MENU',
+    lobby:    'LOBBY',
+    worldmap: 'WORLD_MAP',
+    battle:   'BATTLE',
+    dungeon:  'DUNGEON',
+    result:   'RESULT',
+  };
 
   async goTo(sceneKey, payload = {}) {
     const next = this.scenes[sceneKey];
@@ -113,7 +126,7 @@ export class SceneManager {
     this.currentScene.onEnter(payload);
 
     // Zustand uiStore 동기화
-    useUiStore.getState().goToScene(sceneKey);
+    useUiStore.getState().goToScene(SceneManager._SCENE_KEY_MAP[sceneKey] ?? sceneKey.toUpperCase());
     useUiStore.getState().resetInGameUI();
 
     this.clock.getDelta(); // 누적 delta 리셋
@@ -138,7 +151,9 @@ export class SceneManager {
     if (!this.isRunning) return;
     this._rafId = requestAnimationFrame(() => this._loop());
 
-    const delta = this.clock.getDelta();
+    const now   = performance.now() / 1000;
+    const delta = this._lastTime ? Math.min(now - this._lastTime, 0.1) : 0;
+    this._lastTime = now;
 
     if (this.currentScene && this.currentScene.camera) {
       this.currentScene.update(delta);
