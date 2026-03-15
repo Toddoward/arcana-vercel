@@ -172,7 +172,10 @@ export class SceneManager {
     this.renderer.setSize(w, h);
 
     // 활성 씬의 카메라 aspect 갱신
-    if (this.currentScene?.camera) {
+    // CameraRig가 있는 씬은 rig.onResize에 위임 (없으면 직접 처리)
+    if (this.currentScene?.cameraRig) {
+      this.currentScene.cameraRig.onResize(w, h);
+    } else if (this.currentScene?.camera) {
       const cam = this.currentScene.camera;
       if (cam.isPerspectiveCamera) {
         cam.aspect = w / h;

@@ -27,6 +27,7 @@ import { useUiStore }      from '../../stores/uiStore.js';
 import { CombatEngine }    from '../../game/battle/CombatEngine.js';
 import { DeckBuilder }     from '../../game/deck/DeckBuilder.js';
 import { PassiveManager }  from '../../game/deck/PassiveManager.js';
+import { CameraRig, CAM_MODE, CAM_PRESET } from '../CameraRig.js';
 
 // 포지션별 Z 좌표
 const POSITION_Z = {
@@ -41,16 +42,16 @@ export class BattleScene extends BaseScene {
     super(sm);
     this._allyMeshes    = {};
     this._enemyMeshes   = {};
-    this._cameraTarget  = new THREE.Vector3(0, 1, -2);
     this._combatEngine  = null;
     this._syncManager   = null;
     this._passiveManager= null;
     this._isFinalBoss   = false;
-    this._returnTo      = 'worldmap'; // 전투 후 복귀 씬
+    this._returnTo      = 'worldmap';
     this._myPlayerId    = null;
     this._raycaster     = new THREE.Raycaster();
     this._pointer       = new THREE.Vector2();
     this._clickHandler  = null;
+    this.cameraRig      = new CameraRig();
   }
 
   setSyncManager(sm) { this._syncManager = sm; }
@@ -58,8 +59,12 @@ export class BattleScene extends BaseScene {
   // ── 초기화 (1회) ─────────────────────────────────────────
   init() {
     this.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
-    this.camera.position.set(0, 3, 5);
-    this.camera.lookAt(this._cameraTarget);
+    this.camera.position.copy(CAM_PRESET.BATTLE_OVERVIEW.pos);
+    this.camera.lookAt(CAM_PRESET.BATTLE_OVERVIEW.look);
+
+    // CameraRig 연결 (전투/던전은 입력 없음 — 연출 전용)
+    this.cameraRig.attachCamera(this.camera);
+    this.cameraRig.setMode(CAM_MODE.CINEMATIC);
 
     this.scene.add(new THREE.AmbientLight(0x201828, 3.0));
     const dirLight = new THREE.DirectionalLight(0xfff0d0, 1.5);
@@ -130,12 +135,55 @@ export class BattleScene extends BaseScene {
     this._clickHandler = (e) => this._onEnemyClick(e);
     window.addEventListener('click', this._clickHandler);
 
-    // 첫 턴 처리
-    this._processTurn();
+    // 전투 진입 연출 — 조감 → 아군 후방으로 Slerp
+    this._playCombatIntro(isFinalBoss, () => {
+      // 인트로 완료 후 첫 턴 처리
+      this._processTurn();
+    });
+  }
+
+  /** 전투 진입 연출 */
+  _playCombatIntro(isBoss, onDone) {
+    // 1단계: 전장 조감 포지션
+    const overviewPos  = new THREE.Vector3(0, 10, 14);
+    const overviewLook = new THREE.Vector3(0, 0, -2);
+    this.camera.position.copy(overviewPos);
+    this.camera.lookAt(overviewLook);
+
+    if (isBoss) {
+      // 보스전: 보스 정면 접근 후 후방으로 복귀
+      const bossPos  = new THREE.Vector3(0, 3, -4);
+      const bossLook = new THREE.Vector3(0, 1.5, -8);
+      this.cameraRig.slerpTo(bossPos, bossLook, 1.0, () => {
+        setTimeout(() => {
+          this._slerpToPlayerRear(onDone);
+        }, 600);
+      });
+    } else {
+      // 일반전: 조감에서 후방으로 바로 Slerp
+      setTimeout(() => this._slerpToPlayerRear(onDone), 200);
+    }
+  }
+
+  /** 현재 플레이어 등 뒤 포지션으로 Slerp */
+  _slerpToPlayerRear(onDone = null, playerId = null) {
+    const id   = playerId ?? this._myPlayerId;
+    const mesh = id ? this._allyMeshes[id] : null;
+    const px   = mesh ? mesh.position.x : 0;
+    const pz   = mesh ? mesh.position.z : POSITION_Z[Object.keys(POSITION_Z)[0]] ?? -1.5;
+    const dest = new THREE.Vector3(px, 3, pz + 5);
+    const look = new THREE.Vector3(px, 1.2, pz);
+    this.cameraRig.setMode(CAM_MODE.CINEMATIC);
+    this.cameraRig.slerpTo(dest, look, 1.6, () => {
+      this.cameraRig.setMode(CAM_MODE.TRACKING);
+      onDone?.();
+    });
   }
 
   // ── 씬 퇴장 ──────────────────────────────────────────────
   onExit() {
+    this.cameraRig.unbindInput();
+    this.cameraRig.stopFollow();
     if (this._clickHandler) {
       window.removeEventListener('click', this._clickHandler);
       this._clickHandler = null;
@@ -173,8 +221,8 @@ export class BattleScene extends BaseScene {
       const isMyTurn = unitId === this._myPlayerId;
       useUiStore.getState().setMyTurn?.(isMyTurn, unitId);
 
-      // 카메라 행동자 등 뒤로 (GDD §3.2)
-      this.moveCameraToPlayer(unitId);
+      // 카메라 행동자 등 뒤로 Slerp (GDD §3.2)
+      this._slerpToPlayerRear(null, unitId);
     } else {
       // GDD §13: 적 턴 — 자동 처리
       useUiStore.getState().setMyTurn?.(false, null);
@@ -210,6 +258,9 @@ export class BattleScene extends BaseScene {
 
     useGameStore.getState().addBattleLog?.(result.log ?? '카드를 사용했습니다.');
     this._syncManager?.broadcastSnapshot();
+
+    // 카드 발동 연출 — 대상 방향으로 짧은 Slerp 후 복귀
+    this._playCardCamEffect(unitId, targetId);
 
     // AP 소모 후 잔여 AP가 없으면 자동 턴 종료
     const refreshed = usePlayerStore.getState().players.find((p) => p.id === unitId);
@@ -313,11 +364,13 @@ export class BattleScene extends BaseScene {
 
   _applyEnemyResult(result) {
     if (!result?.targets) return;
-    // 맞은 플레이어 HP 갱신은 CombatEngine이 playerStore 직접 수정
-    // 메시 흔들림 연출
+    // 맞은 플레이어 메시 흔들림 + 카메라 shake
     for (const { playerId } of result.targets ?? []) {
       const mesh = this._allyMeshes[playerId];
       if (mesh) this._shakeMesh(mesh);
+    }
+    if (result.targets?.length > 0) {
+      this.cameraRig.shake(0.12, 250);
     }
   }
 
@@ -375,10 +428,33 @@ export class BattleScene extends BaseScene {
   // 퍼블릭 메서드 (씬 외부에서 호출 가능)
   // ================================================================
 
-  /** 현재 행동 캐릭터 등 뒤로 카메라 이동 (GDD §3.2) */
+  /** 현재 행동 캐릭터 등 뒤로 카메라 이동 (GDD §3.2) — 외부 호환 유지 */
   moveCameraToPlayer(playerId) {
-    const mesh = this._allyMeshes[playerId];
-    if (mesh) this._cameraTarget.set(mesh.position.x, 1.2, mesh.position.z);
+    this._slerpToPlayerRear(null, playerId);
+  }
+
+  /** 카드 발동 연출 — 대상 방향 0.3초 Slerp 후 행동자 뒤로 복귀 */
+  _playCardCamEffect(casterId, targetId) {
+    const targetMesh = this._enemyMeshes[targetId] ?? this._allyMeshes[targetId];
+    const casterMesh = this._allyMeshes[casterId];
+    if (!targetMesh || !casterMesh) return;
+
+    const tx = targetMesh.position.x;
+    const tz = targetMesh.position.z;
+    const cx = casterMesh.position.x;
+    const cz = casterMesh.position.z;
+
+    // 캐스터와 타겟 사이 중간 포지션으로 접근
+    const midPos  = new THREE.Vector3((cx + tx) * 0.5, 2.5, (cz + tz) * 0.5 + 3);
+    const midLook = new THREE.Vector3(tx, 1.2, tz);
+
+    this.cameraRig.setMode(CAM_MODE.CINEMATIC);
+    this.cameraRig.slerpTo(midPos, midLook, 3.5, () => {
+      // 0.3초 유지 후 복귀
+      setTimeout(() => {
+        this._slerpToPlayerRear(null, casterId);
+      }, 300);
+    });
   }
 
   /** 포지션 전환 시 메시 위치 갱신 */
@@ -412,12 +488,8 @@ export class BattleScene extends BaseScene {
   // 매 프레임
   // ================================================================
   update(delta) {
-    // 카메라 부드러운 추적 (GDD §3.2)
-    this.camera.position.lerp(
-      new THREE.Vector3(this._cameraTarget.x, this._cameraTarget.y + 3, this._cameraTarget.z + 5),
-      delta * 3,
-    );
-    this.camera.lookAt(this._cameraTarget);
+    // CameraRig 업데이트 (Slerp/Shake 처리)
+    this.cameraRig.update(delta);
 
     // 마법형 적 부유 애니메이션
     const t = Date.now() * 0.002;
@@ -481,5 +553,9 @@ export class BattleScene extends BaseScene {
     return { ok: true, drawCount: newDeckState.drawCount };
   }
 
-  dispose() { this.onExit(); super.dispose(); }
+  dispose() {
+    this.cameraRig.unbindInput();
+    this.onExit();
+    super.dispose();
+  }
 }

@@ -172,6 +172,8 @@ export default function App({ sceneManager }) {
               }]);
               useUiStore.getState().goToScene(SCENE.LOBBY);
             }}
+            onContinue={handleContinue}
+            onSettings={() => useUiStore.getState().showToast?.('⚙ 설정 — 추후 구현')}
           />
         </FullScreen>
       )}

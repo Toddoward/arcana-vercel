@@ -18,6 +18,7 @@ import { WorldGenerator } from '../../game/world/WorldGenerator.js';
 import { DragonAI }       from '../../game/world/DragonAI.js';
 import { getEnemyPool, getEnemyById } from '../../game/data/enemies.js';
 import { getActiveMainQuest, QUEST_STATUS } from '../../game/data/quests.js';
+import { CameraRig, CAM_MODE }        from '../CameraRig.js';
 
 // 드래곤 카메라 연출 타이밍 (ms)
 const CAM_TO_DRAGON_MS = 1200;
@@ -47,26 +48,38 @@ export class WorldMapScene extends BaseScene {
     this._clickHandler  = null;
     this._hoverHandler  = null;
     this._dragonCutscene = false;
-    this._camLerpTarget  = null;
-    this._camOrigPos     = null;
     this._dragonAI       = null;
     this._syncManager    = null;
+    this.cameraRig       = new CameraRig();
+
+    // 파티 마커 Lerp 이동 상태
+    this._markerMoveFrom = new THREE.Vector3();
+    this._markerMoveTo   = new THREE.Vector3();
+    this._markerMoveT    = 1.0;   // 1.0 = 이동 완료 상태
+    this._markerMoveCb   = null;
+    this._markerMoveSpd  = 6.0;   // units/sec
   }
 
   setSyncManager(sm) { this._syncManager = sm; }
 
   // ── 초기화 (1회) ─────────────────────────────────────────
   init() {
+    // 아이소메트릭 Orthographic (viewH=28, 약간 기울어진 각도)
     const aspect = window.innerWidth / window.innerHeight;
-    const viewH  = 20;
+    const viewH  = 28;
     this.camera = new THREE.OrthographicCamera(
       -viewH * aspect / 2,  viewH * aspect / 2,
        viewH / 2,           -viewH / 2,
-      0.1, 200,
+      0.1, 300,
     );
-    this.camera.position.set(0, 30, 0);
+    this.camera.position.set(0, 40, 28);
     this.camera.lookAt(0, 0, 0);
-    this._camOrigPos = this.camera.position.clone();
+
+    // CameraRig 연결
+    this.cameraRig.attachCamera(this.camera);
+    this.cameraRig.setZoom(1.0);
+    this.cameraRig.setMapBound(55);
+    this.cameraRig.bindInput(window, 'worldmap');
 
     this.scene.add(new THREE.AmbientLight(0x404060, 2.5));
     const dir = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -118,9 +131,31 @@ export class WorldMapScene extends BaseScene {
 
     this._updateMarkers();
     this._registerEvents();
+
+    // 초기 카메라 — castlePos 또는 partyPos 상공으로 Slerp 진입 연출
+    const gs2 = useGameStore.getState();
+    const focusPos = gs2.partyPos ?? gs2.castlePos;
+    if (focusPos) {
+      const mesh = this._tileMeshMap.get(`${focusPos.x},${focusPos.y}`);
+      if (mesh) {
+        const target = new THREE.Vector3(mesh.position.x, 40, mesh.position.z + 28);
+        const lookAt = new THREE.Vector3(mesh.position.x, 0, mesh.position.z);
+        // 카메라를 맵 반대편에서 시작해서 Slerp
+        this.camera.position.set(mesh.position.x, 80, mesh.position.z + 60);
+        this.cameraRig.slerpTo(target, lookAt, 1.2, () => {
+          // 도착 후 tracking 모드로 전환
+          this.cameraRig.setMode(CAM_MODE.TRACKING);
+          this._startFollowParty();
+        });
+      }
+    }
   }
 
-  onExit() { this._removeEvents(); }
+  onExit() {
+    this._removeEvents();
+    this.cameraRig.unbindInput();
+    this.cameraRig.stopFollow();
+  }
 
   // ── 공개 API: 호스트 턴 종료 ─────────────────────────────
   endWorldTurn() {
@@ -227,8 +262,25 @@ export class WorldMapScene extends BaseScene {
   // 타일 타입별 분기 (GDD §18.2)
   // ================================================================
   _handleTileClick(x, y, type) {
+    const prevPos = useGameStore.getState().partyPos;
     useGameStore.getState().moveParty?.({ x, y });
-    this._updateMarkers();
+
+    // 파티 마커 Lerp 이동 시작
+    if (prevPos) this._startMarkerMove(prevPos, { x, y });
+    else this._updateMarkers();
+
+    // 타일 타입별 cinematic 분기
+    const isCinematic = type === TILE.ENEMY || type === TILE.DUNGEON ||
+                        type === TILE.BOSS   || type === TILE.RANDOM_EVENT;
+    if (isCinematic) {
+      this.cameraRig.setMode(CAM_MODE.CINEMATIC);
+      this._slerpToTile(x, y, () => {
+        // cinematic 종료 후 tracking 복귀는 씬 전환 또는 이벤트에서 처리
+      });
+    } else {
+      // 일반 이동 — 파티 마커 follow
+      this._slerpToTile(x, y, () => this._startFollowParty());
+    }
 
     // ── C-2: 드래곤 타일 강제 전투 체크 (GDD §19.5) ──────────
     const gs = useGameStore.getState();
@@ -253,6 +305,65 @@ export class WorldMapScene extends BaseScene {
       case TILE.CASTLE:         return useUiStore.getState().openCastle?.();
       default: break;
     }
+  }
+
+  // ── 카메라 헬퍼 ──────────────────────────────────────────────
+
+  /**
+   * 파티 마커 Lerp 이동 시작 — from 타일 → to 타일 부드럽게 이동
+   * 이동 완료 후 onDone 콜백 호출
+   */
+  _startMarkerMove(fromPos, toPos, onDone = null) {
+    const fromMesh = this._tileMeshMap.get(`${fromPos.x},${fromPos.y}`);
+    const toMesh   = this._tileMeshMap.get(`${toPos.x},${toPos.y}`);
+    if (!fromMesh || !toMesh) { this._updateMarkers(); onDone?.(); return; }
+
+    this._markerMoveFrom.set(fromMesh.position.x, 0.6, fromMesh.position.z);
+    this._markerMoveTo.set(toMesh.position.x, 0.6, toMesh.position.z);
+    this._markerMoveT   = 0;
+    this._markerMoveCb  = onDone;
+    this._partyMarker.visible = true;
+    this._partyMarker.position.copy(this._markerMoveFrom);
+  }
+
+  /**
+   * 턴 시작 — 현재 행동 플레이어 위치로 Slerp
+   * advanceWorldTurn 후 App.jsx 또는 SyncManager에서 호출
+   */
+  onTurnStart() {
+    const gs = useGameStore.getState();
+    const ps = usePlayerStore.getState();
+    const idx = gs.currentPlayerIndex ?? 0;
+    const player = ps.players[idx];
+    if (!player) return;
+
+    const pos = { x: player.tileX ?? 0, y: player.tileY ?? 0 };
+    const mesh = this._tileMeshMap.get(`${pos.x},${pos.y}`);
+    if (!mesh) return;
+
+    // 해당 플레이어 위치로 Slerp 후 tracking
+    this.cameraRig.setMode(CAM_MODE.TRACKING);
+    this._slerpToTile(pos.x, pos.y, () => this._startFollowParty());
+  }
+
+  /** 지정 타일 상공으로 Slerp */
+  _slerpToTile(x, y, onDone = null) {
+    const mesh = this._tileMeshMap.get(`${x},${y}`);
+    if (!mesh) { onDone?.(); return; }
+    const target = new THREE.Vector3(mesh.position.x, 40, mesh.position.z + 28);
+    const lookAt = new THREE.Vector3(mesh.position.x, 0, mesh.position.z);
+    this.cameraRig.slerpTo(target, lookAt, 2.0, onDone);
+  }
+
+  /** 파티 마커 follow 시작 */
+  _startFollowParty() {
+    if (!this._partyMarker.visible) return;
+    this.cameraRig.setMode(CAM_MODE.TRACKING);
+    // _partyMarker.position은 매 프레임 Lerp로 갱신되므로 직접 참조
+    this.cameraRig.follow(
+      this._partyMarker.position,
+      new THREE.Vector3(0, 40, 28),
+    );
   }
 
   // ── C-1: 파티 강제 합류 (GDD §18.5) ─────────────────────────
@@ -324,9 +435,14 @@ export class WorldMapScene extends BaseScene {
   }
 
   // ── 던전 진입 (GDD §20)
+  // DungeonScene.onEnter 내에서 그래프를 생성하고 gameStore.enterDungeon을 호출함
+  // WorldMapScene은 originTile과 함께 씬 전환만 수행
   _enterDungeon(x, y) {
-    useGameStore.getState().enterDungeon(null);
-    this.sceneManager.switchTo('dungeon', { originTile: { x, y } });
+    // cinematic 카메라로 던전 방향 Slerp 후 씬 전환
+    this.cameraRig.setMode(CAM_MODE.CINEMATIC);
+    this._slerpToTile(x, y, () => {
+      this.sceneManager.switchTo('dungeon', { originTile: { x, y } });
+    });
   }
 
   // ── 마을 진입 (GDD §21)
@@ -410,6 +526,8 @@ export class WorldMapScene extends BaseScene {
     gs.advanceWorldTurn?.();
     this._autoSave();
     this._syncManager?.broadcastSnapshot();
+    // 다음 턴 플레이어 위치로 카메라 Slerp
+    this.onTurnStart();
   }
 
   _autoSave() {
@@ -434,33 +552,69 @@ export class WorldMapScene extends BaseScene {
     const targetMesh = this._tileMeshMap.get(`${nextPos.x},${nextPos.y}`);
     if (!targetMesh) { this._dragonCutscene = false; onComplete(); return; }
 
-    const targetPos = new THREE.Vector3(targetMesh.position.x, 30, targetMesh.position.z);
-    this._camLerpTarget = targetPos;
+    const dragonPos = new THREE.Vector3(targetMesh.position.x, 40, targetMesh.position.z + 28);
+    const dragonLook = new THREE.Vector3(targetMesh.position.x, 0, targetMesh.position.z);
 
-    setTimeout(() => {
+    // cinematic 모드로 드래곤 타일로 Slerp
+    this.cameraRig.setMode(CAM_MODE.CINEMATIC);
+    this.cameraRig.slerpTo(dragonPos, dragonLook, 1.2, () => {
+      // 드래곤 마커 이동
       this._dragonMarker.position.set(targetMesh.position.x, 0.7, targetMesh.position.z);
+
+      // CAM_HOLD_MS 대기 후 partyMarker로 복귀
       setTimeout(() => {
-        this._camLerpTarget = this._camOrigPos.clone();
-        setTimeout(() => {
+        const gs = useGameStore.getState();
+        const partyMesh = gs.partyPos
+          ? this._tileMeshMap.get(`${gs.partyPos.x},${gs.partyPos.y}`)
+          : null;
+        const backPos  = partyMesh
+          ? new THREE.Vector3(partyMesh.position.x, 40, partyMesh.position.z + 28)
+          : new THREE.Vector3(0, 40, 28);
+        const backLook = partyMesh
+          ? new THREE.Vector3(partyMesh.position.x, 0, partyMesh.position.z)
+          : new THREE.Vector3(0, 0, 0);
+
+        this.cameraRig.slerpTo(backPos, backLook, 1.0, () => {
           this._dragonCutscene = false;
-          this._camLerpTarget  = null;
+          this.cameraRig.setMode(CAM_MODE.TRACKING);
+          this._startFollowParty();
           onComplete();
-        }, CAM_BACK_MS);
+        });
       }, CAM_HOLD_MS);
-    }, CAM_TO_DRAGON_MS);
+    });
   }
 
   // ================================================================
   // 매 프레임
   // ================================================================
   update(delta) {
-    if (this._camLerpTarget) {
-      this.camera.position.lerp(this._camLerpTarget, Math.min(delta * 4, 1));
+    // ── 파티 마커 타일 단위 Lerp 이동 ──────────────────────
+    if (this._markerMoveT < 1.0) {
+      this._markerMoveT = Math.min(this._markerMoveT + delta * this._markerMoveSpd, 1.0);
+      const t = _easeInOut(this._markerMoveT);
+      this._partyMarker.position.lerpVectors(
+        this._markerMoveFrom, this._markerMoveTo, t,
+      );
+
+      if (this._markerMoveT >= 1.0) {
+        // 이동 완료
+        this._partyMarker.position.copy(this._markerMoveTo);
+        if (this._markerMoveCb) { this._markerMoveCb(); this._markerMoveCb = null; }
+      }
     }
+
+    // ── CameraRig 업데이트 ──────────────────────────────────
+    this.cameraRig.update(delta);
+
+    // ── 드래곤 마커 회전 ────────────────────────────────────
     if (this._dragonMarker.visible) {
       this._dragonMarker.rotation.y += delta * 1.5;
     }
   }
 
-  dispose() { this._removeEvents(); super.dispose(); }
+  dispose() {
+    this._removeEvents();
+    this.cameraRig.unbindInput();
+    super.dispose();
+  }
 }
