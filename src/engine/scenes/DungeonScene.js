@@ -358,6 +358,7 @@ export class DungeonScene extends BaseScene {
   // 노드 클릭 처리
   // ================================================================
   _registerNodeClick() {
+    this._removeNodeClick(); // 씬 재진입 시 기존 핸들러 정리 (중복 방지)
     this._clickCb = (e) => {
       this._pointer.x =  (e.clientX / window.innerWidth)  * 2 - 1;
       this._pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
