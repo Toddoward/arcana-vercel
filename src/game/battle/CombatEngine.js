@@ -29,7 +29,8 @@ const SOLO_SCALE = { 1: 0.60, 2: 0.75, 3: 0.90, 4: 1.00 };
 
 // ================================================================
 export class CombatEngine {
-  constructor() {
+  constructor(passiveManager = null) {
+    this._passiveManager = passiveManager;
     this._initiative = null;
     this._enemies    = [];        // 현재 전투 적 배열
     this._aiMap      = new Map(); // enemyId → CombatEnemyAI
@@ -78,7 +79,7 @@ export class CombatEngine {
       })),
       ...this._enemies.map((e) => ({
         id:       e.id,
-        dex:      e.dex ?? 3,
+        dex:      e.DEX ?? e.dex ?? 3,  // 대/소문자 모두 허용
         isPlayer: false,
       })),
     ];
@@ -648,6 +649,47 @@ export class CombatEngine {
     }
 
     return { ok: true, fled, roll };
+  }
+
+  // ================================================================
+  // 부활 스크롤 사용 (GDD §16.2)
+  //
+  // App.jsx handleRevive → bt._combatEngine.reviveWithScroll() 경로로 호출됨.
+  // 인벤토리에서 revival_scroll 1개를 소모하고 사망 플레이어 전원을 30% HP로 부활.
+  // ================================================================
+  reviveWithScroll() {
+    const ps = usePlayerStore.getState();
+
+    // 부활 스크롤 소지자 탐색 (inventoryItems 또는 legacy inventory 모두 지원)
+    const holder = ps.players.find(
+      (p) => p.inventoryItems?.some((i) => i.itemId === 'revival_scroll')
+          || p.inventory?.some((i) => i.id === 'revival_scroll'),
+    );
+    if (holder) {
+      if (holder.inventoryItems?.some((i) => i.itemId === 'revival_scroll')) {
+        ps.removeInventoryItem(holder.id, 'revival_scroll');
+      } else {
+        // legacy p.inventory 경로 (addItem API로 추가된 경우)
+        usePlayerStore.setState((state) => ({
+          players: state.players.map((p) => {
+            if (p.id !== holder.id) return p;
+            const inventory = [...(p.inventory ?? [])];
+            const idx = inventory.findIndex((i) => i.id === 'revival_scroll');
+            if (idx >= 0) inventory.splice(idx, 1);
+            return { ...p, inventory };
+          }),
+        }));
+      }
+    }
+
+    // 사망 플레이어 전원 30% HP로 부활
+    for (const p of ps.players) {
+      if (p.hp <= 0 || p.isDead) ps.revivePlayer(p.id);
+    }
+
+    // _endCombat('LOSE')가 호출되어 started=false가 됐을 경우 복원
+    this._started = true;
+    this._pushLog('✨ 부활 스크롤 사용 — 파티 전원 부활!');
   }
 
   // ================================================================

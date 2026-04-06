@@ -98,8 +98,18 @@ export default function App({ sceneManager }) {
     if (bt?.setSyncManager) bt.setSyncManager(syncRef.current);
   }, [sceneManager]);
 
-  // ── 씬 전환 헬퍼 ───────────────────────────────────────
-  const goTo = (key, payload) => sceneManager.goTo(key.toLowerCase().replace('_', ''), payload);
+  // ── 씬 전환 헬퍼 (SCENE 상수 → SceneManager 등록 키 명시적 매핑) ──
+  const SCENE_KEY_MAP = {
+    [SCENE.MAIN_MENU]:        'mainmenu',
+    [SCENE.WORLD_MAP]:        'worldmap',
+    [SCENE.BATTLE]:           'battle',
+    [SCENE.DUNGEON]:          'dungeon',
+  };
+  const goTo = (key, payload) => {
+    const sceneKey = SCENE_KEY_MAP[key];
+    if (!sceneKey) return;
+    sceneManager.goTo(sceneKey, payload);
+  };
 
   // ── 전투 종료 후 복귀 ───────────────────────────────────
   const handleContinue = ({ nickname } = {}) => {

@@ -123,10 +123,7 @@ export class BattleScene extends BaseScene {
         ps.setDeckState(player.id, deckState);
       }
 
-      this._combatEngine.startCombat(
-        usePlayerStore.getState().players,
-        enemies,
-      );
+      this._combatEngine.startCombat(enemies);
 
       this._syncManager?.broadcastSnapshot();
     }
@@ -287,12 +284,11 @@ export class BattleScene extends BaseScene {
   // ================================================================
   endPlayerTurn() {
     if (!this._combatEngine) return;
-    this._combatEngine.endTurn();
+    this._combatEngine.endPlayerTurn(this._myPlayerId);
 
     // 패시브 tick (GDD §10.6)
     if (useGameStore.getState().isHost) {
-      const playerIds = usePlayerStore.getState().players.map((p) => p.id);
-      this._passiveManager?.tick(playerIds[0]); // TODO: 현재 행동자 기준
+      this._passiveManager?.tick(this._combatEngine.currentUnit());
       this._syncManager?.broadcastSnapshot();
     }
 

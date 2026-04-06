@@ -15,6 +15,8 @@
 //   직접 게임 로직 없음 — 순수 전송 레이어
 // ============================================================
 
+import Peer from 'peerjs';
+
 // heartbeat 무응답 임계값 (GDD §2.5)
 const HEARTBEAT_INTERVAL_MS = 1_500;
 const HEARTBEAT_TIMEOUT_MS  = 3_000;
@@ -66,14 +68,7 @@ export class PeerManager {
   // ================================================================
   async init(peerId = null) {
     return new Promise((resolve, reject) => {
-      // PeerJS는 CDN 또는 npm 'peerjs' 패키지에서 로드된 전역 Peer 사용
-      const PeerClass = (typeof Peer !== 'undefined') ? Peer : null;
-      if (!PeerClass) {
-        reject(new Error('PeerJS 라이브러리가 로드되지 않았습니다.'));
-        return;
-      }
-
-      this._peer = peerId ? new PeerClass(peerId) : new PeerClass();
+      this._peer = peerId ? new Peer(peerId) : new Peer();
 
       this._peer.on('open', (id) => {
         this._myPeerId = id;
