@@ -500,7 +500,7 @@ export class DungeonScene extends BaseScene {
       useUiStore.getState().showToast?.(`🪤 함정 발동! 파티 ${dmg} 데미지`);
       this.cameraRig.shake(0.2, 400);
       const ps = usePlayerStore.getState();
-      for (const p of ps.players) ps.applyDamage?.(p.id, dmg);
+      for (const p of ps.players) ps.takeDamage(p.id, dmg);
     }
   }
 
@@ -536,7 +536,7 @@ export class DungeonScene extends BaseScene {
       const ps = usePlayerStore.getState();
       for (const p of ps.players) {
         const penalty = Math.round(p.maxHp * 0.10);
-        ps.applyDamage?.(p.id, penalty);
+        ps.takeDamage(p.id, penalty);
       }
       useUiStore.getState().showToast?.('💀 코어 공략 실패! 최대 HP -10%');
       this.cameraRig.shake(0.25, 500);

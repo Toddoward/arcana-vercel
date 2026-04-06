@@ -91,6 +91,12 @@ export default function App({ sceneManager }) {
     hostRef.current = new HostManager(peerRef.current);
     syncRef.current = new SyncManager(peerRef.current, hostRef.current);
 
+    // PeerJS 피어 생성 — 실패해도 싱글플레이어 모드로 계속
+    peerRef.current.init().catch((err) => {
+      console.warn('[App] PeerJS 초기화 실패 — 싱글플레이어 모드:', err?.message ?? err);
+      useUiStore.getState().showToast?.('멀티플레이어 연결 실패 — 싱글플레이어로 진행합니다.', 'warn');
+    });
+
     // 씬에 SyncManager 주입
     const wm = sceneManager.scenes['worldmap'];
     const bt = sceneManager.scenes['battle'];

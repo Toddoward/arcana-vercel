@@ -155,6 +155,69 @@ Note: `goTo` is currently defined but not called in App.jsx (all call sites use
 - M-1 (PeerJS unhandled rejection on CDN failure)
 - M-2 (WorldMapScene duplicate event listeners on re-enter)
 
+## M-1 — PeerJS init() called + rejection handled
+
+**File**: `src/App.jsx:88-99` (useEffect)
+
+**Root cause discovered**: `PeerManager.init()` was **never called** — the `Peer` instance was never created, so `peerRef.current.myPeerId` was always `null`, falling back to the string `'host'` everywhere. The diagnosis framed this as an unhandled rejection, but the deeper bug was that PeerJS was never initialised at all.
+
+```diff
+  peerRef.current = new PeerManager();
+  hostRef.current = new HostManager(peerRef.current);
+  syncRef.current = new SyncManager(peerRef.current, hostRef.current);
+
++ // PeerJS 피어 생성 — 실패해도 싱글플레이어 모드로 계속
++ peerRef.current.init().catch((err) => {
++   console.warn('[App] PeerJS 초기화 실패 — 싱글플레이어 모드:', err?.message ?? err);
++   useUiStore.getState().showToast?.('멀티플레이어 연결 실패 — 싱글플레이어로 진행합니다.', 'warn');
++ });
+```
+
+- On success: PeerJS assigns a real peer ID; `myPeerId` is now populated for lobby display and P2P connections.
+- On failure (CDN down / network error): toast shown, single-player continues unaffected.
+
+## M-2 — WorldMapScene duplicate listener fix
+
+**File**: `src/engine/scenes/WorldMapScene.js:224`
+
+```diff
+  _registerEvents() {
++   this._removeEvents(); // 씬 재진입 시 기존 핸들러 정리 (중복 방지)
+    this._clickHandler = (e) => this._onPointerClick(e);
+    this._hoverHandler = (e) => this._onPointerMove(e);
+    window.addEventListener('click',     this._clickHandler);
+    window.addEventListener('mousemove', this._hoverHandler);
+  }
+```
+
+**Root cause**: `_registerEvents()` overwrote `this._clickHandler` / `this._hoverHandler` with new
+arrow function closures before removing the old ones. `_removeEvents()` uses the stored reference to
+call `removeEventListener`, so once the reference is overwritten the old handler becomes
+unremovable — stacking on every WorldMap re-entry (e.g., after each battle).
+
+`_removeEvents()` already handles `null`-check guards, so calling it first is safe even on
+the very first `onEnter`.
+
+## M-3 — DungeonScene applyDamage → takeDamage
+
+**File**: `src/engine/scenes/DungeonScene.js:503, 539`
+
+**Root cause**: The diagnosis labelled DungeonScene as a stub, but it is substantially implemented — graph generation, 3D scene build, proximity culling, party marker movement, and all node-type handlers (BATTLE, BOSS, TREASURE, TRAP, SHOP, CORE, EVENT) are present.
+
+The actual bug: both `_handleTrapNode` and `_handleCoreNode` called `ps.applyDamage?.(...)`, which does not exist on `playerStore`. The optional-chaining `?.` caused the call to silently no-op — trap and core-fail damage never landed on players.
+
+```diff
+  // _handleTrapNode (line 503)
+- for (const p of ps.players) ps.applyDamage?.(p.id, dmg);
++ for (const p of ps.players) ps.takeDamage(p.id, dmg);
+
+  // _handleCoreNode (line 539)
+- ps.applyDamage?.(p.id, penalty);
++ ps.takeDamage(p.id, penalty);
+```
+
+`takeDamage` is the CombatEngine-compat alias defined at `playerStore.js:580`, which delegates to `damagePlayer`.
+
 ## Next step
 
-Run `/verify` to validate the full core loop.
+Run `/verify-and-commit`.

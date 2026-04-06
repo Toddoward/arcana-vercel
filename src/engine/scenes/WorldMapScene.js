@@ -222,6 +222,7 @@ export class WorldMapScene extends BaseScene {
   // 포인터 이벤트
   // ================================================================
   _registerEvents() {
+    this._removeEvents(); // 씬 재진입 시 기존 핸들러 정리 (중복 방지)
     this._clickHandler = (e) => this._onPointerClick(e);
     this._hoverHandler = (e) => this._onPointerMove(e);
     window.addEventListener('click',     this._clickHandler);
