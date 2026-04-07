@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# spec-driven harness
+!.claude/
+!.claudedoc/
