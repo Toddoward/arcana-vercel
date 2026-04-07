@@ -10,8 +10,9 @@
 //   uiStore.js    — openInventory, openCharacter, openQuest
 // ============================================================
 
-import { useGameStore } from '../../stores/gameStore.js';
-import { useUiStore }   from '../../stores/uiStore.js';
+import { useGameStore }   from '../../stores/gameStore.js';
+import { usePlayerStore } from '../../stores/playerStore.js';
+import { useUiStore }     from '../../stores/uiStore.js';
 
 // 위협도 → 색상 (GDD §19.4)
 function threatColor(threat) {
@@ -22,11 +23,14 @@ function threatColor(threat) {
 }
 
 export function WorldHUD({ onEndTurn, onSave }) {
-  const worldTurn    = useGameStore((s) => s.worldTurn);
-  const dragonPos    = useGameStore((s) => s.dragonPos);
-  const dragonThreat = useGameStore((s) => s.dragonThreat ?? 0);
-  const castlePos    = useGameStore((s) => s.castlePos);
-  const partyPos     = useGameStore((s) => s.partyPos);
+  const worldTurn          = useGameStore((s) => s.worldTurn);
+  const dragonPos          = useGameStore((s) => s.dragonPos);
+  const dragonThreat       = useGameStore((s) => s.dragonThreat ?? 0);
+  const castlePos          = useGameStore((s) => s.castlePos);
+  const partyPos           = useGameStore((s) => s.partyPos);
+  const currentPlayerIndex = useGameStore((s) => s.currentPlayerIndex ?? 0);
+  const players            = usePlayerStore((s) => s.players);
+  const currentPlayerName  = players[currentPlayerIndex]?.name ?? `Player ${currentPlayerIndex + 1}`;
 
   const openInventory = useUiStore((s) => s.openInventory);
   const openCharacter = useUiStore((s) => s.openCharacter);
@@ -43,23 +47,27 @@ export function WorldHUD({ onEndTurn, onSave }) {
     <>
       {/* ── 상단 바 ────────────────────────────────────────── */}
       <div style={{
-        position:    'fixed',
-        top:         0,
-        left:        0,
-        right:       0,
-        height:      48,
-        background:  'rgba(6,8,14,0.92)',
-        borderBottom:'1px solid #2a3040',
-        display:     'flex',
-        alignItems:  'center',
-        padding:     '0 16px',
-        zIndex:      200,
-        fontFamily:  "'Cinzel', serif",
-        gap:         16,
+        position:     'fixed',
+        top:          0,
+        left:         0,
+        right:        0,
+        height:       48,
+        background:   'rgba(6,8,14,0.92)',
+        borderBottom: '1px solid #2a3040',
+        display:      'flex',
+        alignItems:   'center',
+        padding:      '0 16px',
+        zIndex:       200,
+        fontFamily:   "'Cinzel', serif",
+        gap:          16,
+        pointerEvents:'auto',
       }}>
-        {/* 턴 카운터 */}
+        {/* 턴 카운터 + 현재 플레이어 */}
         <div style={{ color: '#c8a040', fontSize: 13, fontWeight: 700, minWidth: 80 }}>
           Turn {worldTurn ?? 1}
+        </div>
+        <div style={{ color: '#80c0e0', fontSize: 12, fontWeight: 600 }}>
+          {currentPlayerName}의 턴
         </div>
 
         {/* 마일스톤 진행 바 (placeholder) */}
@@ -119,16 +127,17 @@ export function WorldHUD({ onEndTurn, onSave }) {
 
       {/* ── 우측 정보 패널 — 드래곤 추적기 ─────────────────── */}
       <div style={{
-        position:    'fixed',
-        top:         60,
-        right:       12,
-        width:       160,
-        background:  'rgba(10,12,20,0.88)',
-        border:      '1px solid #2a3040',
+        position:     'fixed',
+        top:          60,
+        right:        12,
+        width:        160,
+        background:   'rgba(10,12,20,0.88)',
+        border:       '1px solid #2a3040',
         borderRadius: 6,
-        padding:     '10px 12px',
-        zIndex:      100,
-        fontFamily:  "'Cinzel', serif",
+        padding:      '10px 12px',
+        zIndex:       100,
+        fontFamily:   "'Cinzel', serif",
+        pointerEvents:'auto',
       }}>
         <div style={{ color: '#c8a040', fontSize: 10, letterSpacing: 1, marginBottom: 8 }}>
           🐉 DRAGON
@@ -151,18 +160,19 @@ export function WorldHUD({ onEndTurn, onSave }) {
 
       {/* ── 하단 액션 바 ──────────────────────────────────── */}
       <div style={{
-        position:    'fixed',
-        bottom:      0,
-        left:        0,
-        right:       0,
-        height:      56,
-        background:  'rgba(6,8,14,0.92)',
-        borderTop:   '1px solid #2a3040',
-        display:     'flex',
-        alignItems:  'center',
-        justifyContent: 'center',
-        gap:         12,
-        zIndex:      200,
+        position:     'fixed',
+        bottom:       0,
+        left:         0,
+        right:        0,
+        height:       56,
+        background:   'rgba(6,8,14,0.92)',
+        borderTop:    '1px solid #2a3040',
+        display:      'flex',
+        alignItems:   'center',
+        justifyContent:'center',
+        gap:          12,
+        zIndex:       200,
+        pointerEvents:'auto',
       }}>
         {[
           { label: '🎒 인벤토리', onClick: openInventory },

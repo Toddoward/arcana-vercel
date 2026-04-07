@@ -15,6 +15,7 @@ import { useGameStore }   from '../../stores/gameStore.js';
 import { usePlayerStore } from '../../stores/playerStore.js';
 import { useUiStore }     from '../../stores/uiStore.js';
 import { WorldGenerator } from '../../game/world/WorldGenerator.js';
+import { HexGrid }        from '../../game/world/HexGrid.js';
 import { DragonAI }       from '../../game/world/DragonAI.js';
 import { getEnemyPool, getEnemyById } from '../../game/data/enemies.js';
 import { getActiveMainQuest, QUEST_STATUS } from '../../game/data/quests.js';
@@ -58,6 +59,9 @@ export class WorldMapScene extends BaseScene {
     this._markerMoveT    = 1.0;   // 1.0 = 이동 완료 상태
     this._markerMoveCb   = null;
     this._markerMoveSpd  = 6.0;   // units/sec
+
+    // HexGrid 인스턴스 (경로탐색 + AP 비용 계산용)
+    this._hexGrid = null;
   }
 
   setSyncManager(sm) { this._syncManager = sm; }
@@ -122,10 +126,12 @@ export class WorldMapScene extends BaseScene {
       const players  = usePlayerStore.getState().players;
       gs.startGame(players.length, worldMap, castlePos, dragonSpawn);
       this._buildTiles(worldMap);
+      this._hexGrid  = HexGrid.deserialize(worldMap);
       this._dragonAI = new DragonAI(worldMap);
     } else if (gs.worldMap) {
       // 세이브 복귀
       this._buildTiles(gs.worldMap);
+      this._hexGrid  = HexGrid.deserialize(gs.worldMap);
       this._dragonAI = new DragonAI(gs.worldMap);
     }
 
@@ -263,28 +269,77 @@ export class WorldMapScene extends BaseScene {
   // 타일 타입별 분기 (GDD §18.2)
   // ================================================================
   _handleTileClick(x, y, type) {
-    const prevPos = useGameStore.getState().partyPos;
-    useGameStore.getState().moveParty?.({ x, y });
+    const gs = useGameStore.getState();
+    const ps = usePlayerStore.getState();
+    const prevPos = gs.partyPos;
 
-    // 파티 마커 Lerp 이동 시작
-    if (prevPos) this._startMarkerMove(prevPos, { x, y });
-    else this._updateMarkers();
+    // ── AP 검사 (Fix-3) ──────────────────────────────────────
+    if (prevPos && this._hexGrid) {
+      const apCost = this._hexGrid.distance(prevPos.x, prevPos.y, x, y);
+      const localPlayer = ps.players.find((p) => p.id === gs.localPlayerId);
+      if (localPlayer && localPlayer.currentAP < apCost) {
+        useUiStore.getState().showToast?.(
+          `AP 부족 (필요: ${apCost}, 현재: ${localPlayer.currentAP})`,
+          'warn',
+        );
+        return;
+      }
+      if (localPlayer && apCost > 0) {
+        ps.spendAP(localPlayer.id, apCost);
+      }
+    }
 
-    // 타일 타입별 cinematic 분기
+    gs.moveParty?.({ x, y });
+
+    // ── 파티 마커 경로 이동 (Fix-4) + 도착 이벤트 (Fix-5) ───
+    const onArrival = () => this._onMarkerArrival(x, y, type);
+
+    if (prevPos && this._hexGrid) {
+      const path = this._hexGrid.findPath(prevPos.x, prevPos.y, x, y);
+      if (path && path.length > 0) {
+        this._walkPath(prevPos, path, onArrival);
+      } else {
+        this._startMarkerMove(prevPos, { x, y }, onArrival);
+      }
+    } else {
+      this._updateMarkers();
+      onArrival();
+    }
+
+    // ── 카메라 ────────────────────────────────────────────────
     const isCinematic = type === TILE.ENEMY || type === TILE.DUNGEON ||
                         type === TILE.BOSS   || type === TILE.RANDOM_EVENT;
     if (isCinematic) {
       this.cameraRig.setMode(CAM_MODE.CINEMATIC);
-      this._slerpToTile(x, y, () => {
-        // cinematic 종료 후 tracking 복귀는 씬 전환 또는 이벤트에서 처리
-      });
+      this._slerpToTile(x, y);
     } else {
-      // 일반 이동 — 파티 마커 follow
       this._slerpToTile(x, y, () => this._startFollowParty());
     }
+  }
 
-    // ── C-2: 드래곤 타일 강제 전투 체크 (GDD §19.5) ──────────
+  /**
+   * 파티 마커를 경로 waypoint 배열을 따라 순차적으로 Lerp 이동
+   * @param {{x,y}} fromPos 시작 타일 좌표
+   * @param {Array<{x,y}>} path findPath() 반환 경로
+   * @param {Function|null} onDone 경로 완료 콜백
+   */
+  _walkPath(fromPos, path, onDone = null) {
+    const step = (currentPos, remaining) => {
+      if (remaining.length === 0) { onDone?.(); return; }
+      const [next, ...rest] = remaining;
+      this._startMarkerMove(currentPos, next, () => step(next, rest));
+    };
+    step(fromPos, path);
+  }
+
+  /**
+   * 파티 마커가 목적지 타일에 도착했을 때 실행
+   * 모든 tile-event 트리거는 여기서만 발생 (Fix-5)
+   */
+  _onMarkerArrival(x, y, type) {
     const gs = useGameStore.getState();
+
+    // ── C-2: 드래곤 타일 강제 전투 (GDD §19.5) ──────────────
     if (gs.dragonPos && gs.dragonPos.x === x && gs.dragonPos.y === y) {
       this._enterDragonBattle();
       return;
@@ -337,6 +392,9 @@ export class WorldMapScene extends BaseScene {
     const idx = gs.currentPlayerIndex ?? 0;
     const player = ps.players[idx];
     if (!player) return;
+
+    // 턴 시작 토스트 알림
+    useUiStore.getState().showToast?.(`${player.name ?? `Player ${idx + 1}`}의 턴`);
 
     const pos = { x: player.tileX ?? 0, y: player.tileY ?? 0 };
     const mesh = this._tileMeshMap.get(`${pos.x},${pos.y}`);
