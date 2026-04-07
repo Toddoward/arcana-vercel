@@ -30,7 +30,9 @@ export function WorldHUD({ onEndTurn, onSave }) {
   const partyPos           = useGameStore((s) => s.partyPos);
   const currentPlayerIndex = useGameStore((s) => s.currentPlayerIndex ?? 0);
   const players            = usePlayerStore((s) => s.players);
-  const currentPlayerName  = players[currentPlayerIndex]?.name ?? `Player ${currentPlayerIndex + 1}`;
+  const currentPlayer      = players[currentPlayerIndex];
+  const currentPlayerName  = currentPlayer?.name ?? `Player ${currentPlayerIndex + 1}`;
+  const currentAP          = currentPlayer?.currentAP ?? 0;
 
   const openInventory = useUiStore((s) => s.openInventory);
   const openCharacter = useUiStore((s) => s.openCharacter);
@@ -68,6 +70,9 @@ export function WorldHUD({ onEndTurn, onSave }) {
         </div>
         <div style={{ color: '#80c0e0', fontSize: 12, fontWeight: 600 }}>
           {currentPlayerName}의 턴
+        </div>
+        <div style={{ color: '#60d080', fontSize: 12, fontWeight: 600 }}>
+          ⚡ {currentAP} AP
         </div>
 
         {/* 마일스톤 진행 바 (placeholder) */}

@@ -62,6 +62,8 @@ export class WorldMapScene extends BaseScene {
 
     // HexGrid 인스턴스 (경로탐색 + AP 비용 계산용)
     this._hexGrid = null;
+    // 이벤트 리스너를 등록한 DOM 요소 (canvas)
+    this._eventsEl = null;
   }
 
   setSyncManager(sm) { this._syncManager = sm; }
@@ -229,15 +231,20 @@ export class WorldMapScene extends BaseScene {
   // ================================================================
   _registerEvents() {
     this._removeEvents(); // 씬 재진입 시 기존 핸들러 정리 (중복 방지)
+    // canvas에만 리스너 등록 — UI 버튼 클릭이 Three.js로 통과되는 것을 방지
+    const canvas = this.sm.renderer.domElement;
+    this._eventsEl = canvas;
     this._clickHandler = (e) => this._onPointerClick(e);
     this._hoverHandler = (e) => this._onPointerMove(e);
-    window.addEventListener('click',     this._clickHandler);
-    window.addEventListener('mousemove', this._hoverHandler);
+    canvas.addEventListener('click',     this._clickHandler);
+    canvas.addEventListener('mousemove', this._hoverHandler);
   }
 
   _removeEvents() {
-    if (this._clickHandler) { window.removeEventListener('click',     this._clickHandler); this._clickHandler = null; }
-    if (this._hoverHandler) { window.removeEventListener('mousemove', this._hoverHandler); this._hoverHandler = null; }
+    const el = this._eventsEl ?? window;
+    if (this._clickHandler) { el.removeEventListener('click',     this._clickHandler); this._clickHandler = null; }
+    if (this._hoverHandler) { el.removeEventListener('mousemove', this._hoverHandler); this._hoverHandler = null; }
+    this._eventsEl = null;
   }
 
   _onPointerClick(e) {
@@ -273,34 +280,44 @@ export class WorldMapScene extends BaseScene {
     const ps = usePlayerStore.getState();
     const prevPos = gs.partyPos;
 
-    // ── AP 검사 (Fix-3) ──────────────────────────────────────
+    // ── AP + 경로 사전 검증 (AP 차감 전에 경로 확인) ─────────
+    let apCost    = 0;
+    let localPlayer = null;
+    let path      = null;
+
     if (prevPos && this._hexGrid) {
-      const apCost = this._hexGrid.distance(prevPos.x, prevPos.y, x, y);
-      const localPlayer = ps.players.find((p) => p.id === gs.localPlayerId);
+      apCost      = this._hexGrid.distance(prevPos.x, prevPos.y, x, y);
+      localPlayer = ps.players.find((p) => p.id === gs.localPlayerId);
+
       if (localPlayer && localPlayer.currentAP < apCost) {
         useUiStore.getState().showToast?.(
-          `AP 부족 (필요: ${apCost}, 현재: ${localPlayer.currentAP})`,
-          'warn',
+          `AP 부족 (필요: ${apCost}, 현재: ${localPlayer.currentAP})`, 'warn',
         );
         return;
       }
-      if (localPlayer && apCost > 0) {
-        ps.spendAP(localPlayer.id, apCost);
+
+      path = this._hexGrid.findPath(prevPos.x, prevPos.y, x, y);
+      if (path === null) {
+        useUiStore.getState().showToast?.('이동할 수 없는 타일입니다.', 'warn');
+        return;
       }
+
+      // 경로·AP 모두 유효 → AP 차감
+      if (localPlayer && apCost > 0) ps.spendAP(localPlayer.id, apCost);
     }
 
-    gs.moveParty?.({ x, y });
-
-    // ── 파티 마커 경로 이동 (Fix-4) + 도착 이벤트 (Fix-5) ───
+    // ── 파티 마커 경로 이동 + 도착 이벤트 ───────────────────
+    // moveParty()는 _onMarkerArrival() 내부에서 호출 (애니메이션 완료 후 store 갱신)
     const onArrival = () => this._onMarkerArrival(x, y, type);
 
-    if (prevPos && this._hexGrid) {
-      const path = this._hexGrid.findPath(prevPos.x, prevPos.y, x, y);
-      if (path && path.length > 0) {
+    if (path !== null && prevPos) {
+      if (path.length > 0) {
         this._walkPath(prevPos, path, onArrival);
       } else {
-        this._startMarkerMove(prevPos, { x, y }, onArrival);
+        onArrival(); // 동일 타일
       }
+    } else if (prevPos && !this._hexGrid) {
+      this._startMarkerMove(prevPos, { x, y }, onArrival);
     } else {
       this._updateMarkers();
       onArrival();
@@ -309,12 +326,9 @@ export class WorldMapScene extends BaseScene {
     // ── 카메라 ────────────────────────────────────────────────
     const isCinematic = type === TILE.ENEMY || type === TILE.DUNGEON ||
                         type === TILE.BOSS   || type === TILE.RANDOM_EVENT;
-    if (isCinematic) {
-      this.cameraRig.setMode(CAM_MODE.CINEMATIC);
-      this._slerpToTile(x, y);
-    } else {
-      this._slerpToTile(x, y, () => this._startFollowParty());
-    }
+    if (isCinematic) this.cameraRig.setMode(CAM_MODE.CINEMATIC);
+    // 모든 이동 후 파티 마커 추적 재개 (cinematic 포함)
+    this._slerpToTile(x, y, () => this._startFollowParty());
   }
 
   /**
@@ -337,6 +351,8 @@ export class WorldMapScene extends BaseScene {
    * 모든 tile-event 트리거는 여기서만 발생 (Fix-5)
    */
   _onMarkerArrival(x, y, type) {
+    // 애니메이션 완료 후 store 갱신 — 시각과 상태 동기화
+    useGameStore.getState().moveParty?.({ x, y });
     const gs = useGameStore.getState();
 
     // ── C-2: 드래곤 타일 강제 전투 (GDD §19.5) ──────────────
@@ -396,11 +412,8 @@ export class WorldMapScene extends BaseScene {
     // 턴 시작 토스트 알림
     useUiStore.getState().showToast?.(`${player.name ?? `Player ${idx + 1}`}의 턴`);
 
-    const pos = { x: player.tileX ?? 0, y: player.tileY ?? 0 };
-    const mesh = this._tileMeshMap.get(`${pos.x},${pos.y}`);
-    if (!mesh) return;
-
-    // 해당 플레이어 위치로 Slerp 후 tracking
+    // partyPos 기준으로 카메라 이동 (individual tileX/Y는 파티 이동 시 미정의)
+    const pos = gs.partyPos ?? { x: 0, y: 0 };
     this.cameraRig.setMode(CAM_MODE.TRACKING);
     this._slerpToTile(pos.x, pos.y, () => this._startFollowParty());
   }
@@ -543,38 +556,23 @@ export class WorldMapScene extends BaseScene {
   // ================================================================
   _runEnemyAIPhase() {
     if (!this._dragonAI) { this._finalizeWorldTurn(); return; }
-    const gs      = useGameStore.getState();
-    const nextPos = this._dragonAI.move(gs.dragonPos, gs.worldMap);
-    if (!nextPos)  { this._finalizeWorldTurn(); return; }
 
-    // GDD §3.3 카메라 연출
-    this._playDragonCutscene(nextPos, () => {
-      const tile = gs.worldMap?.tiles?.find((t) => t.x === nextPos.x && t.y === nextPos.y);
-      if (tile?.type === TILE.VILLAGE) {
-        gs.burnVillage?.(nextPos);
-        this._rebuildTile(nextPos.x, nextPos.y, TILE.VILLAGE_BURNED);
-        useUiStore.getState().showToast?.('🔥 드래곤이 마을을 불태웠습니다!');
+    // tick() 이 store 갱신(setDragonPos, burnVillage, evictPlayers) 을 모두 처리
+    const result = this._dragonAI.tick();
 
-        // ── C-3: 해당 타일 플레이어 → 인접 빈 타일로 강제 이동 (GDD §19.3)
-        const ps = usePlayerStore.getState();
-        ps.players.forEach((p) => {
-          if (p.tileX === nextPos.x && p.tileY === nextPos.y) {
-            const adjacent = gs.worldMap?.tiles?.find((t) =>
-              t.type === TILE.EMPTY &&
-              Math.abs(t.x - nextPos.x) + Math.abs(t.y - nextPos.y) === 1
-            );
-            if (adjacent) {
-              ps.movePlayer(p.id, adjacent.x, adjacent.y);
-              useUiStore.getState().showToast?.(`${p.name} 인근으로 대피했습니다.`);
-            }
-          }
-        });
+    if (result.gameOver) return; // DragonAI 내부에서 triggerGameOver 호출됨
+
+    if (!result.moved) { this._finalizeWorldTurn(); return; }
+
+    // GDD §3.3 — 이동 후 새 dragonPos 기준으로 카메라 연출
+    const newDragonPos = useGameStore.getState().dragonPos;
+    if (!newDragonPos) { this._finalizeWorldTurn(); return; }
+
+    this._playDragonCutscene(newDragonPos, () => {
+      // 소각된 마을 타일 색상 갱신
+      if (result.burnedVillage) {
+        this._rebuildTile(result.burnedVillage.x, result.burnedVillage.y, TILE.VILLAGE_BURNED);
       }
-      if (tile?.type === TILE.CASTLE) {
-        useUiStore.getState().showGameOver?.('레드 드래곤이 왕국 성에 도달했습니다.');
-        return;
-      }
-      gs.moveDragon(nextPos);
       this._updateMarkers();
       this._finalizeWorldTurn();
     });
@@ -583,6 +581,12 @@ export class WorldMapScene extends BaseScene {
   _finalizeWorldTurn() {
     const gs = useGameStore.getState();
     gs.advanceWorldTurn?.();
+
+    // 새 턴 플레이어 AP 초기화
+    const nextIdx    = useGameStore.getState().currentPlayerIndex;
+    const nextPlayer = usePlayerStore.getState().players[nextIdx];
+    if (nextPlayer) usePlayerStore.getState().resetAP(nextPlayer.id);
+
     this._autoSave();
     this._syncManager?.broadcastSnapshot();
     // 다음 턴 플레이어 위치로 카메라 Slerp

@@ -31,9 +31,14 @@ Fix the playable loop FIRST. Do not add features until this passes:
 - Exception: only when Todd explicitly provides replacement values
 
 ## Known Open Issues
-- [ ] Input system not responding (root cause unknown)
-- [ ] UI does not react to game state changes
-- [ ] Lobby join mode branching incomplete (App.jsx mode="join")
+- [x] Input system not responding (CRITICAL-1~5 resolved)
+- [x] Lobby join mode branching (resolved)
+- [x] Worldmap: the turn doesn't start or end, and it's impossible to tell whose turn it is.
+- [x] Worldmap: movement ignores AP cost (teleports freely)
+- [x] Worldmap: no hex path interpolation (LERP movement missing)
+- [x] Worldmap: tile arrival events not triggering
+- [x] Worldmap: turn start/end flow not wired to UI
+- [x] UI: React components not visible over Three.js canvas (z-index)
 - [ ] WebRTC cross-network test not done
 - [ ] Assets not in repo: favicon.png, title.png, apple-touch-icon.png
 
