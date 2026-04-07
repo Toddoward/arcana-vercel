@@ -39,8 +39,9 @@ Fix the playable loop FIRST. Do not add features until this passes:
 - [x] Worldmap: tile arrival events not triggering
 - [x] Worldmap: turn start/end flow not wired to UI
 - [x] UI: React components not visible over Three.js canvas (z-index)
+- [x] Assets not in repo (resolved: present at public/assets/icons and public/assets/images)
 - [ ] WebRTC cross-network test not done
-- [ ] Assets not in repo: favicon.png, title.png, apple-touch-icon.png
+- [ ] Battle flow: card play → damage → enemy AI turn not fully wired
 
 ## Code Style
 - ESM only (no CommonJS require)

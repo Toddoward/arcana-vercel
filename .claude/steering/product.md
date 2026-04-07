@@ -1,15 +1,18 @@
 # Steering: Product
 
-## Current Mission (until further notice)
-Core loop is partially restored. Input errors fixed.
-Next target: worldmap turn flow and movement logic.
+## Current Mission
+Battle flow completeness — a player must be able to:
+  1. Enter a battle from a worldmap ENEMY tile
+  2. See their card hand and play a card
+  3. Deal damage; see enemy HP update
+  4. End their turn; enemy AI takes its turn
+  5. Win or lose the battle and return to worldmap with updated state
 
-Must pass before anything else:
-  1. Player can only move tiles ≤ AP value per turn
-  2. Movement follows hex shortest path with smooth interpolation
-  3. Arriving on a tile triggers its event (battle/dungeon/town/event)
-  4. React UI renders above Three.js canvas (z-index resolved)
-  5. Turn start/end is explicit and visible to player
+## Resolved Scopes
+| Scope | Closed | Commit | Notes |
+|-------|--------|--------|-------|
+| worldmap-flow | 2026-04-07 | e2b6cdb | Tile events, AP movement, hex LERP, UI z-index |
+| worldmap-turn | 2026-04-07 | 715522e | Turn flow, AP reset, dragon AI, input passthrough, camera |
 
 ## What "Playable" Means
 A player can:
@@ -41,11 +44,13 @@ All 5 must work before any new content is added.
 - Quest system UI
 - Any multiplayer feature beyond existing PeerJS setup
 
-## Feature Priority Order (after core loop)
-1. Battle flow completeness (card play → damage → turn end → enemy AI)
-2. Worldmap interaction (tile click → move → event trigger)
-3. Lobby join flow (mode="join" branching in App.jsx)
-4. Dragon advance cutscene
-5. Dungeon entry and node navigation
-6. Town and shop system
-7. Quest system
+## Feature Queue
+| Priority | Scope | Status |
+|----------|-------|--------|
+| 1 | battle-flow (card play → damage → turn end → enemy AI) | IN PROGRESS |
+| 2 | lobby-join (mode="join" branching in App.jsx) | QUEUED |
+| 3 | dungeon-entry (node navigation, room events) | QUEUED |
+| 4 | town-shop (village entry, shop UI) | QUEUED |
+| 5 | quest-system (quest panel, progress tracking) | QUEUED |
+| 6 | camera-orbit (right-click orbit around look-at point) | QUEUED |
+| 7 | webrtc-crossnetwork (cross-network P2P test) | QUEUED |
